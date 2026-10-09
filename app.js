@@ -328,7 +328,7 @@ function syncMapViewport(){
   root.setProperty('--map-viewport-height',height+'px');root.setProperty('--map-viewport-top',(viewport?.offsetTop||0)+'px');
   const toolbar=document.querySelector('.map-toolbar'),bottom=toolbar.offsetTop+toolbar.offsetHeight;
   root.setProperty('--map-toolbar-bottom',bottom+'px');
-  if(map&&document.body.classList.contains('map-view'))map.invalidateSize({pan:false});
+  if(map&&document.body.classList.contains('map-view'))map.invalidateSize({animate:false});
  });
 }
 window.addEventListener('resize',syncMapViewport);
@@ -407,7 +407,7 @@ $('sheetHome').addEventListener('click',()=>useMapCounty('home'));
 document.addEventListener('keydown',e=>{if(e.key==='Escape'){$('mapFilters').open=false;$('closeCountySheet').click()}});
 function isVisibleState(box,viewport){return box[0]<=viewport.getEast()&&box[2]>=viewport.getWest()&&box[1]<=viewport.getNorth()&&box[3]>=viewport.getSouth()}
 async function updateVisibleCounties(){
- if(!map||!stateBounds)return;
+ if(!map||!stateBounds||!document.body.classList.contains('map-view'))return;
  const boundsNow=map.getBounds(),codes=Object.keys(stateBounds).filter(code=>isVisibleState(stateBounds[code],boundsNow));
  const allowed=new Set(codes);
  for(const [code,layer] of Object.entries(mapLayers)){if(!allowed.has(code)){map.removeLayer(layer);delete mapLayers[code]}}
@@ -437,13 +437,14 @@ async function updateVisibleCounties(){
  recolorMap();
 }
 async function loadHeatmap(){
+ if(!document.body.classList.contains('map-view'))return;
  if(typeof L==='undefined'){$('mapStatus').textContent='Map library unavailable. Reload with an internet connection.';return}
  if(!map){
-  map=L.map('countyMap',{zoomControl:true,scrollWheelZoom:true,minZoom:3,maxZoom:19}).setView([39,-97],4);
+  map=L.map('countyMap',{zoomControl:true,scrollWheelZoom:true,trackResize:false,minZoom:3,maxZoom:19}).setView([39,-97],4);
   switchMapBase(currentBaseMap);
   map.on('moveend',()=>{updateVisibleCounties()});
  }
- setTimeout(()=>map.invalidateSize(),90);
+ setTimeout(()=>{if(document.body.classList.contains('map-view'))map.invalidateSize({animate:false})},90);
  try{
   await initMapData();
   if(Date.now()-reportDataFetchedAt>120000)await fetchMapReportData();

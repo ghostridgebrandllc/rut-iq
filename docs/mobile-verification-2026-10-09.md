@@ -9,9 +9,11 @@ Scope: existing Rut IQ main branch, Render service srv-db46tgcs728c739pjj00, and
 - Use the visual viewport for map sizing during keyboard/browser chrome changes; collapse extra map UI during phone search and dismiss input focus on submit.
 - Add safe-area spacing, 16px form fields, focus handling, navigation labels, and selected-layer state.
 - Clear private search markers and ignore late search responses after clearing.
+- Preserve the map center across hidden-tab resizes and repeated navigation; only resize Leaflet while the map is visible.
 - Version the app.js URL.
 
 ## Checks before deployment
+- Existing tests/browser.cjs guest suite also passes after the map-center correction: repeated tab/viewport changes, Free locks, disabled checkout, and mocked OTP request format.
 - tests/mobile_map.cjs: Chrome mobile emulation at 320x568, 375x667, 390x844, 430x932, 844x390, and 390x400. Filter Done, county action bounds, no horizontal overflow.
 - Actual map tap selects Tuscaloosa County; Use this county updates Home. All three map layer controls, live Northport city search, clear search, history navigation, Free gates, and disabled checkout pass without JavaScript errors.
 - Keyboard visual-viewport geometry and search provider failure are simulated. These are not physical iPhone tests.
