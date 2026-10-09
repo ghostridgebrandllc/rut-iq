@@ -31,6 +31,8 @@ function show(id,record=true){
  document.querySelectorAll('.view').forEach(x=>x.classList.toggle('show',x.id===id));
  document.querySelectorAll('.dock button').forEach(x=>{const active=x.dataset.tab===id;x.classList.toggle('active',active);if(active)x.setAttribute('aria-current','page');else x.removeAttribute('aria-current')});
  document.body.classList.toggle('map-view',id==='heatmap');
+ if(id!=='heatmap'){$('mapAddressInput').blur();document.body.classList.remove('map-searching','map-keyboard')}
+ syncMapViewport();
  document.title=({home:'Daily Report',heatmap:'Rut Map',signup:'Hunter Sign-in',privacy:'Privacy',terms:'Terms of Use',help:'Help'}[id]||'Rut IQ')+' | Rut IQ by Ghost Ridge';
  if(id==='home')loadDailyReport();if(id==='plans')updateMembershipUI();if(id==='heatmap')setTimeout(()=>loadHeatmap(),50);
  render();window.scrollTo(0,0);
@@ -228,7 +230,7 @@ function switchMapBase(type){
  const x=sources[type]||sources.satellite;
  baseMapLayer=L.tileLayer(x[0],{maxZoom:x[2],attribution:x[1]}).addTo(map);
  if(mapLayer)mapLayer.bringToFront();
- for(const n of ['satellite','topo','street']){const b=$(n+'Btn');if(b)b.style.borderColor=n===type?'#d3ad78':'#6c5035'}
+ for(const n of ['satellite','topo','street']){const b=$(n+'Btn');if(b){b.style.borderColor=n===type?'#d3ad78':'#6c5035';b.setAttribute('aria-pressed',String(n===type))}}
 }
 let stateBounds=null,countyCache={},mapLayers={},mapLoading={},allMapCounts={},mapInitialized=false;let nameByFips={},stateByFips={};let mapColorMode='volume',mapDays=7,reportDataFetchedAt=0,mapDataRequest=0;
 async function initMapData(){
@@ -238,7 +240,7 @@ async function initMapData(){
  for(const [st,list] of Object.entries(regions)){for(const c of list){nameByFips[c.fips]=c.name;stateByFips[c.fips.slice(0,2)]=st}}
  const select=$('mapStateSelect');
  select.innerHTML='<option value="">Jump to a state...</option>'+Object.keys(regions).sort().map(st=>'<option>'+st+'</option>').join('');
- select.addEventListener('change',()=>{const st=select.value;const f=(regions[st]||[])[0]?.fips.slice(0,2);if(f&&stateBounds[f]){const b=stateBounds[f];map.fitBounds([[b[1],b[0]],[b[3],b[2]]],{padding:[15,15]})}});
+ select.addEventListener('change',()=>{const st=select.value;const f=(regions[st]||[])[0]?.fips.slice(0,2);if(f&&stateBounds[f]){closeCountySheet(false);clearSearchLocation();$('mapFilters').open=false;const b=stateBounds[f];map.fitBounds([[b[1],b[0]],[b[3],b[2]]],{padding:[15,15]})}});
  await fetchMapReportData();
 
 }
@@ -310,9 +312,33 @@ function countyStyle(feature){
 }
 function countyNameFromFips(fips){return nameByFips[fips]||null}
 function stateNameFromCode(code){return stateByFips[code]||'Unknown'}
-function resetNationMap(){if(!map)return;map.setView([39,-97],4);$('mapStateSelect').value='';if(searchMarker){map.removeLayer(searchMarker);searchMarker=null}setSearchStatus('Showing the United States. Search for a city, ZIP, or address to zoom in.')}
+function resetNationMap(){if(!map)return;closeCountySheet(false);clearSearchLocation();$('mapFilters').open=false;map.setView([39,-97],4);$('mapStateSelect').value='';setSearchStatus('Showing the United States. Search for a city, ZIP, or address to zoom in.')}
 let searchMarker=null;
-let mapSearchInProgress=false;
+let mapSearchInProgress=false,mapSearchRequest=0;
+const searchPrivacy='Search goes to a map service. Your search marker is not shared with hunters.';
+function clearSearchLocation(){++mapSearchRequest;setSearchLoading(false);if(searchMarker&&map)map.removeLayer(searchMarker);searchMarker=null;$('mapAddressInput').value='';setSearchStatus(searchPrivacy)}
+let viewportFrame=0;
+function syncMapViewport(){
+ cancelAnimationFrame(viewportFrame);
+ viewportFrame=requestAnimationFrame(()=>{
+  const viewport=window.visualViewport,height=viewport?.height||window.innerHeight;
+  const keyboard=document.body.classList.contains('map-view')&&document.activeElement===$('mapAddressInput')&&window.innerHeight-height>120;
+  document.body.classList.toggle('map-keyboard',keyboard);
+  const root=document.documentElement.style;
+  root.setProperty('--map-viewport-height',height+'px');root.setProperty('--map-viewport-top',(viewport?.offsetTop||0)+'px');
+  const toolbar=document.querySelector('.map-toolbar'),bottom=toolbar.offsetTop+toolbar.offsetHeight;
+  root.setProperty('--map-toolbar-bottom',bottom+'px');
+  if(map&&document.body.classList.contains('map-view'))map.invalidateSize({pan:false});
+ });
+}
+window.addEventListener('resize',syncMapViewport);
+window.visualViewport?.addEventListener('resize',syncMapViewport);
+window.visualViewport?.addEventListener('scroll',syncMapViewport);
+if(window.ResizeObserver)new ResizeObserver(syncMapViewport).observe(document.querySelector('.map-toolbar'));
+$('mapAddressInput').addEventListener('focus',()=>{$('mapFilters').open=false;closeCountySheet(false);document.body.classList.add('map-searching');syncMapViewport()});
+$('mapAddressInput').addEventListener('blur',()=>{document.body.classList.remove('map-searching');syncMapViewport()});
+$('mapAddressInput').addEventListener('search',()=>{if(!$('mapAddressInput').value)clearSearchLocation()});
+$('clearMapSearch').addEventListener('click',()=>{clearSearchLocation();$('mapAddressInput').focus()});
 function setSearchStatus(message){$('mapAddressStatus').textContent=message}
 function setSearchLoading(isLoading){
  mapSearchInProgress=isLoading;
@@ -344,9 +370,11 @@ $('mapAddressForm').addEventListener('submit',async event=>{
  const query=$('mapAddressInput').value.trim();
  if(query.length<3){setSearchStatus('Enter at least three characters to search.');return}
  if(!map){setSearchStatus('Open the map first and try again.');return}
- setSearchLoading(true);setSearchStatus('Finding location...');
+ $('mapAddressInput').blur();closeCountySheet(false);$('mapFilters').open=false;
+ const request=++mapSearchRequest;setSearchLoading(true);setSearchStatus('Finding location...');
  try{
   const location=await geocodeUnitedStates(query);
+  if(request!==mapSearchRequest)return;
   if(searchMarker){map.removeLayer(searchMarker);searchMarker=null}
   const isStreet=['house','building','amenity','residential','road','street'].includes(location.type);
   const isZip=['postcode','postal_code'].includes(location.type);
@@ -356,12 +384,12 @@ $('mapAddressForm').addEventListener('submit',async event=>{
   searchMarker.bindTooltip('Your private search location',{direction:'top'});
   $('mapStateSelect').value='';
   setSearchStatus('Showing '+location.label+'. The marker is only visible to you in this session.');
- }catch(error){setSearchStatus(error.name==='AbortError'?'Address search timed out. Please try again.':error.message||'Search failed. Try again.')}
- finally{setSearchLoading(false)}
+ }catch(error){if(request===mapSearchRequest)setSearchStatus(error.name==='AbortError'?'Address search timed out. Please try again.':error.message||'Search failed. Try again.')}
+ finally{if(request===mapSearchRequest)setSearchLoading(false)}
 });
 
-let activeMapCounty=null;
-function openCountySheet(state,county){activeMapCounty={state,county};$('mapFilters').open=false;renderCountySheet();$('countySheet').hidden=false;$('heatmap').classList.add('has-county')}
+let activeMapCounty=null,countyFocusReturn=null;
+function openCountySheet(state,county){countyFocusReturn=document.activeElement;$('mapAddressInput').blur();activeMapCounty={state,county};$('mapFilters').open=false;renderCountySheet();$('countySheet').hidden=false;$('heatmap').classList.add('has-county');$('sheetContent').scrollTop=0;$('closeCountySheet').focus({preventScroll:true})}
 function renderCountySheet(){
  if(!activeMapCounty)return;
  const {state,county}=activeMapCounty,data=allMapCounts[state+'|'+county],count=mapReportCount(data);
@@ -369,7 +397,10 @@ function renderCountySheet(){
  if(!reportDataFetchedAt){$('sheetContent').innerHTML='<p class="sheet-note">County report counts are not available yet. Try again when the map has loaded.</p>';return}
  $('sheetContent').innerHTML='<div class="sheet-count"><strong>'+count+'</strong><span>reports · past '+mapDays+' days</span></div>'+(proAccess?'<p class="sheet-note">'+Number(data?.['hunters_'+mapDays+'d']||0)+' contributing hunters · '+safe(mapSignal(data).label)+'</p>':'')+'<p class="sheet-note">'+(count?'Hunter observations show what was reported here. They do not guarantee current rut activity.':'No reports in this window. Deer may still be active here.')+'</p>';
 }
-$('closeCountySheet').addEventListener('click',()=>{activeMapCounty=null;$('countySheet').hidden=true;$('heatmap').classList.remove('has-county')});
+function closeCountySheet(restoreFocus=true){const wasOpen=!$('countySheet').hidden;activeMapCounty=null;$('countySheet').hidden=true;$('heatmap').classList.remove('has-county');if(wasOpen&&restoreFocus)(countyFocusReturn?.isConnected?countyFocusReturn:$('countyMap')).focus({preventScroll:true})}
+$('closeCountySheet').addEventListener('click',()=>closeCountySheet());
+$('mapFilters').addEventListener('toggle',()=>{$('heatmap').classList.toggle('filters-open',$('mapFilters').open);if($('mapFilters').open)closeCountySheet(false)});
+$('closeMapFilters').addEventListener('click',()=>{$('mapFilters').open=false;$('mapFilters').querySelector('summary').focus({preventScroll:true})});
 function useMapCounty(destination){if(!activeMapCounty)return;selectedState=activeMapCounty.state;region=activeMapCounty.county;saveRegion();setSelectors();$('regionPicker').open=false;loadReports();loadDailyReport();show(destination)}
 $('sheetReports').addEventListener('click',()=>useMapCounty('reports'));
 $('sheetHome').addEventListener('click',()=>useMapCounty('home'));
