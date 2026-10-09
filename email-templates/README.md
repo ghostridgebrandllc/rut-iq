@@ -1,17 +1,24 @@
 # Rut IQ authentication emails
 
-Applied to Supabase project `ddxzyzjsqrnputiibdbi` on October 9, 2026.
+## Current status — October 9, 2026
+
+Custom SMTP is disabled on Supabase project `ddxzyzjsqrnputiibdbi`. The built-in email service was restored after real signup requests failed with SMTP 535 Authentication credentials invalid. A subsequent confirmation request returned HTTP 200. Inbox receipt and link completion remain user checks.
+
+Disabling custom SMTP resets hosted email templates to defaults and restores the built-in limit of two emails per hour. The branded templates below are preserved here, but are NOT currently active.
+
+## Prepared branding
 
 - Confirm sign up: `confirmation.html`; subject: **Confirm your Rut IQ account**
 - Magic link or OTP: `magic_link.html`; subject: **Your Rut IQ sign-in link**
-- Sender: **Rut IQ <rut-iq@auth.ghostridgebrand.com>**
+- Intended sender: **Rut IQ <rut-iq@auth.ghostridgebrand.com>**
 - SMTP: `smtp.resend.com`, port `465`, username `resend`.
 - Dedicated Resend sending-only key: **Rut IQ Supabase Auth SMTP**, restricted to the verified sending domain.
 - Credentials belong only in the SMTP password setting; never commit them or expose them to the frontend.
-- Preserve `{{ .ConfirmationURL }}` in both templates. The existing app handles the authenticated return to Home.
-- These files are copied into the Supabase dashboard; a Git push does not update email templates automatically.
-- Other email templates remain unchanged.
+- Preserve `{{ .ConfirmationURL }}`. The app handles authenticated returns to Home.
+- A Git push does not update hosted email templates.
 
-Verification: sender settings persisted after reload; both subjects and complete HTML were read back from the dashboard; both templates rendered at 390px without horizontal overflow. Dedicated SMTP authentication succeeded without sending an email.
+Earlier checks verified template persistence, 390px browser rendering without overflow, and direct SMTP authentication with the dedicated key. Those checks did not validate the credential saved by the dashboard: actual Supabase email requests subsequently failed. Remote password field edits did not resolve that failure.
 
-Pending: fresh email delivery through Supabase and rendering/link completion in iPhone Mail. Browser template previews do not establish email-client compatibility.
+Before re-enabling: save the correct credential through a working dashboard input, reapply both templates, and verify one authorized real confirmation send through Supabase plus email provider delivery status. Do not treat a standalone SMTP login as end-to-end verification.
+
+Woods IQ credentials and settings are unchanged.
