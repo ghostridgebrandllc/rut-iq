@@ -103,14 +103,16 @@ async function loadHeatmap(){
  setTimeout(()=>map.invalidateSize(),70);
  const st=selectedState;$('mapRegion').textContent=st+' — county-level hunter reports';$('mapStatus').textContent='Loading approved reports...';
  try{
-  if(!countyGeo){let r=await fetch('./counties-map.json');if(!r.ok)throw Error('County map unavailable');countyGeo=await r.json()}
+
   let u=new URL(api+'/rest/v1/rut_county_activity');u.searchParams.set('select','state,county,reports_7d,reports_30d');u.searchParams.set('state','eq.'+st);u.searchParams.set('limit','1000');
   const resp=await fetch(u,{headers:headers()});if(!resp.ok)throw Error('County report data unavailable');
   let rows=await resp.json();if(st!==selectedState)return;
   let counties=regions[st]||[],byFips={};counties.forEach(c=>{byFips[c.fips]=c.name});let sc=counties[0]?.fips?.slice(0,2);
+  if(!sc)throw Error('State boundaries not available');
+  if(!countyGeo||countyGeo._state!==sc){const r=await fetch('./maps/'+sc+'.json');if(!r.ok)throw Error('State boundaries unavailable');countyGeo=await r.json();countyGeo._state=sc}
   mapActivity=Object.fromEntries(rows.map(r=>[r.county,r]));
   if(mapLayer)map.removeLayer(mapLayer);
-  const selected=countyGeo.features.filter(f=>f.properties.STATE===sc);
+  const selected=countyGeo.features;
   mapLayer=L.geoJSON({type:'FeatureCollection',features:selected},{style:f=>{
    const county=byFips[f.properties.STATE+f.properties.COUNTY]||f.properties.NAME;const n=Number(mapActivity[county]?.reports_7d||0);
    return {color:n?'#d5b485':'#b7a58d',weight:n?1.2:.7,fillColor:n>=8?'#f3aa47':n>=3?'#c89552':n>=1?'#97815e':'#4b4a43',fillOpacity:n?.45:.10}
@@ -120,7 +122,7 @@ async function loadHeatmap(){
    layer.on('popupopen',()=>{let btn=document.getElementById('openCountyReports');if(btn)btn.onclick=()=>{region=county;saveRegion();setSelectors();loadReports();show('reports')}});
    layer.on('mouseover',()=>layer.setStyle({weight:2,color:'#f2d3a2'}));layer.on('mouseout',()=>mapLayer?.resetStyle(layer));
   }}).addTo(map);
-  if(selected.length)map.fitBounds(mapLayer.getBounds(),{padding:[14,14]});
+  if(selected.length){map.invalidateSize();map.fitBounds(mapLayer.getBounds(),{padding:[14,14]});}
   $('mapStatus').textContent=rows.length?rows.length+' counties have reports within 30 days. Showing 7-day totals.':'No hunter reports have been submitted for this state in the last 30 days.';
  }catch(e){$('mapStatus').textContent='Unable to load the county map right now. Please try again.'}
 }
