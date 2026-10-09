@@ -2,7 +2,7 @@ const $=id=>document.getElementById(id);
 function localDate(){const d=new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0')}
 let selectedState=localStorage.getItem('rut_iq_state')||'';
 let region=localStorage.getItem('rut_iq_county')||'';
-let reports=[];let regions={};let countyTotal=0;let reportsReady=false;let authUser=null;let authToken=null;let countyGeo=null;let map=null;let mapLayer=null;let mapActivity={};let baseMapLayer=null;let currentBaseMap='satellite';
+let behaviorTotals=null;let reports=[];let regions={};let countyTotal=0;let reportsReady=false;let authUser=null;let authToken=null;let countyGeo=null;let map=null;let mapLayer=null;let mapActivity={};let baseMapLayer=null;let currentBaseMap='satellite';
 
 $('date').value=localDate();$('date').max=localDate();
 function changeState(e){selectedState=e.target.value;region='';saveRegion();setSelectors();render();loadReports();loadDailyReport()}
@@ -21,7 +21,7 @@ function setSelectors(){
  const opts='<option value="">Choose a county</option>'+arr.map(c=>'<option value="'+c.name.replace(/"/g,'&quot;')+'" '+(c.name===region?'selected':'')+'>'+c.name+'</option>').join('');
  $('county').innerHTML=opts;$('reportCounty').innerHTML=opts;$('county').disabled=!selectedState;$('reportCounty').disabled=!selectedState;updateRegionSummary();
 }
-fetch('./regions.json').then(r=>{if(!r.ok)throw Error('Regions unavailable');return r.json()}).then(data=>{regions=data;if(!regions[selectedState])selectedState='';setSelectors();$('regionPicker').open=!hasRegion();render();loadReports();loadDailyReport()}).catch(e=>{ $('county').innerHTML='<option>Unable to load counties</option>'; $('reportCounty').innerHTML='<option>Unable to load counties</option>'; $('reportForm').querySelector('button[type=submit]').disabled=true; $('regionLabel').textContent='Refresh to load counties'; });
+const regionsReady=fetch('./regions.json').then(r=>{if(!r.ok)throw Error('Regions unavailable');return r.json()}).then(data=>{regions=data;if(!regions[selectedState])selectedState='';setSelectors();$('regionPicker').open=!hasRegion();render();loadReports();loadDailyReport();return data}).catch(e=>{ $('county').innerHTML='<option>Unable to load counties</option>'; $('reportCounty').innerHTML='<option>Unable to load counties</option>'; $('reportForm').querySelector('button[type=submit]').disabled=true; $('regionLabel').textContent='Refresh to load counties';return null; });
 const routes=new Set(['welcome','home','heatmap','reports','submit','signup','plans','about','help','privacy','terms','account']);
 function defaultRoute(){return authUser||localStorage.getItem('rut_iq_welcomed')==='1'?'home':'welcome'}
 function enterAccount(mode){
@@ -70,14 +70,16 @@ function render(){
  $('activityChart').style.display=list.length&&proAccess?'block':'none';
  $('activityEmpty').textContent=!reportsReady?'Loading county reports...':!countyTotal?'No hunter reports in this county in the past 7 days. Be the first to contribute.':proAccess?'Recent county observations are shown below.':'This county has '+countyTotal+' reports in the past 7 days. See today’s observations in your Daily Rut Report. Pro adds detailed behavior analysis.';
  const cats=['Cruising','Chasing','Tending a doe','Breeding observed','Scrape / rub activity','No rut activity observed'];
- const counts=cats.map(c=>list.filter(r=>r.behavior===c).length),max=Math.max(1,...counts);
+ const fields=['cruising','chasing','tending','breeding','sign','no_activity'];
+ const counts=fields.map(field=>Number(behaviorTotals?.[field+'_7d']||0)),max=Math.max(1,...counts);
  $('bars').innerHTML=counts.map((n,i)=>'<div title="'+safe(cats[i])+': '+n+' reports" style="height:'+Math.max(4,n/max*100)+'%"></div>').join('');
  $('feed').className=list.length?'':'empty';
- $('feed').innerHTML=proAccess&&list.length?list.map(r=>'<div class="feeditem"><div class="row"><b>'+safe(r.behavior)+'</b><span class="muted">'+safe(r.date)+'</span></div><p class="muted">Hunter observation</p><span class="tag">'+safe(r.county)+'</span></div>').join(''):!countyTotal?'No hunter reports yet for this county.':countyTotal+' county reports in the past 7 days.<p>Daily Rut Report is included free. Pro unlocks detailed behavior analysis.</p><button class="ghost" data-route="plans">Explore Pro</button>';
+ $('feed').innerHTML=proAccess&&list.length?(countyTotal>list.length?'<p class="muted">Showing the latest '+list.length+' of '+countyTotal+' reports. Behavior totals below include every report in this window.</p>':'')+list.map(r=>'<div class="feeditem"><div class="row"><b>'+safe(r.behavior)+'</b><span class="muted">'+safe(r.date)+'</span></div><p class="muted">Hunter observation</p><span class="tag">'+safe(r.county)+'</span></div>').join(''):!countyTotal?'No hunter reports yet for this county.':countyTotal+' county reports in the past 7 days.<p>Daily Rut Report is included free. Pro unlocks detailed behavior analysis.</p><button class="ghost" data-route="plans">Explore Pro</button>';
 }
 const api='https://ddxzyzjsqrnputiibdbi.supabase.co';
 const pubKey='sb_publishable_IKgJ-FLqeJDXM0VEoARYqQ_f-9EpGl1';
 function headers(access){return {'apikey':pubKey,'Content-Type':'application/json',...(access?{'Authorization':'Bearer '+access}:{})}}
+function dayRequest(access,day=localDate()){return {method:'POST',headers:headers(access),body:JSON.stringify({as_of:day})}}
 let refreshTimer=null;
 let dailyRequest=0;
 async function loadDailyReport(){
@@ -87,23 +89,23 @@ async function loadDailyReport(){
  title.textContent=county+', '+st;
  box.innerHTML='<p class="muted">Checking recent hunter reports...</p>';
  try{
-  const url=new URL(api+'/rest/v1/rut_daily_county_reports');
+  const url=new URL(api+'/rest/v1/rpc/rut_daily_counties_for_day');
   url.searchParams.set('select','reports_24h,hunters_24h,cruising_24h,chasing_24h,tending_24h,breeding_24h,signs_24h,no_activity_24h,latest_submission_at');
   url.searchParams.set('state','eq.'+st);url.searchParams.set('county','eq.'+county);url.searchParams.set('limit','1');
-  const response=await fetch(url,{headers:headers()});
+  const response=await fetch(url,dayRequest());
   if(!response.ok)throw Error('Recent activity is unavailable');
   const data=await response.json();
   if(request!==dailyRequest||st!==selectedState||county!==region)return;
   const r=data[0],total=Number(r?.reports_24h||0),hunters=Number(r?.hunters_24h||0);
   if(!total){
-   box.innerHTML='<div class="daily-stats"><div class="daily-stat"><strong>0</strong><span>Reports · 24 hours</span></div><div class="daily-stat"><strong>0</strong><span>Hunters reporting</span></div></div><p class="daily-empty">No fresh reports yet.</p><p class="daily-note">Be the first to share what you saw. An empty report does not mean deer are inactive.</p><p class="daily-meta">Includes reports sent in the last 24 hours for observations from today or yesterday.</p>';
+   box.innerHTML='<div class="daily-stats"><div class="daily-stat"><strong>0</strong><span>Reports · 24 hours</span></div><div class="daily-stat"><strong>0</strong><span>Hunters reporting</span></div></div><p class="daily-empty">No fresh reports yet.</p><p class="daily-note">Be the first to share what you saw. An empty report does not mean deer are inactive.</p><p class="daily-meta">Includes reports sent in the last 24 hours for observations from today or yesterday. Dates follow your device’s local calendar.</p>';
    return;
   }
   const items=[['Cruising',r.cruising_24h],['Chasing',r.chasing_24h],['Tending',r.tending_24h],['Breeding',r.breeding_24h],['Scrapes / rubs',r.signs_24h],['No rut behavior seen',r.no_activity_24h]];
   const badges=items.filter(x=>Number(x[1])>0).map(([label,n])=>'<div class="behavior-row"><span>'+safe(label)+'</span><strong>'+Number(n)+'</strong></div>').join('');
   const updated=r.latest_submission_at?new Date(r.latest_submission_at).toLocaleString('en-US',{month:'short',day:'numeric',hour:'numeric',minute:'2-digit'}):'';
   const confidence=total>=5&&hunters>=3?'Multiple hunters contributed. These are observations, not predictions.':'Early reports only — not enough independent observations to establish a reliable regional trend.';
-  box.innerHTML='<div class="daily-stats"><div class="daily-stat"><strong>'+total+'</strong><span>Reports · 24 hours</span></div><div class="daily-stat"><strong>'+hunters+'</strong><span>Hunters reporting</span></div></div><div class="daily-behavior-list">'+badges+'</div><p class="daily-note">'+safe(confidence)+'</p><p class="daily-meta">Last report: '+safe(updated)+' · Reports submitted in the last 24 hours, describing observations from today or yesterday.</p>';
+  box.innerHTML='<div class="daily-stats"><div class="daily-stat"><strong>'+total+'</strong><span>Reports · 24 hours</span></div><div class="daily-stat"><strong>'+hunters+'</strong><span>Hunters reporting</span></div></div><div class="daily-behavior-list">'+badges+'</div><p class="daily-note">'+safe(confidence)+'</p><p class="daily-meta">Last report: '+safe(updated)+' · Reports submitted in the last 24 hours, describing observations from today or yesterday. Dates follow your device’s local calendar.</p>';
  }catch(error){
   if(request===dailyRequest)box.innerHTML='<p class="daily-note">Daily reports are temporarily unavailable. Please try again later.</p><button class="ghost" type="button" data-action="retry-daily">Retry</button>';
  }
@@ -111,20 +113,23 @@ async function loadDailyReport(){
 
 let reportRequest=0;
 async function loadReports(){
- const request=++reportRequest,key=region,st=selectedState;
- reportsReady=false;reports=[];countyTotal=0;render();if(!hasRegion())return;
+ const request=++reportRequest,key=region,st=selectedState,access=proAccess,token=authToken,day=localDate();
+ reportsReady=false;reports=[];behaviorTotals=null;countyTotal=0;render();if(!hasRegion())return;
  try{
-  const u=new URL(api+'/rest/v1/rut_free_county_activity');
+  const u=new URL(api+'/rest/v1/rpc/rut_free_counties_for_day');
   u.searchParams.set('select','reports_7d');u.searchParams.set('state','eq.'+st);u.searchParams.set('county','eq.'+key);
-  const resp=await fetch(u,{headers:headers()});if(!resp.ok)throw Error('Could not load live reports');
-  const counts=await resp.json();let data=[];
-  if(proAccess&&authToken){
-   const detail=new URL(api+'/rest/v1/rut_public_reports');detail.searchParams.set('select','state,county,behavior,observed_on,created_at');detail.searchParams.set('state','eq.'+st);detail.searchParams.set('county','eq.'+key);detail.searchParams.set('order','created_at.desc');detail.searchParams.set('limit','200');
-   const r=await fetch(detail,{headers:headers(authToken)});if(!r.ok)throw Error('Could not load behavior details');data=await r.json();
+  const resp=await fetch(u,dayRequest(undefined,day));if(!resp.ok)throw Error('Could not load live reports');
+  const counts=await resp.json();let data=[],totals=null;
+  if(access&&token){
+   const detail=new URL(api+'/rest/v1/rpc/rut_reports_for_day');detail.searchParams.set('select','state,county,behavior,observed_on,created_at');detail.searchParams.set('state','eq.'+st);detail.searchParams.set('county','eq.'+key);detail.searchParams.set('order','created_at.desc,id.asc');detail.searchParams.set('limit','200');
+   const summary=new URL(api+'/rest/v1/rpc/rut_pro_signals_for_day');summary.searchParams.set('state','eq.'+st);summary.searchParams.set('county','eq.'+key);
+   const [r,a]=await Promise.all([fetch(detail,dayRequest(token,day)),fetch(summary,dayRequest(token,day))]);
+   if(!r.ok||!a.ok)throw Error('Could not load behavior details');
+   data=await r.json();totals=(await a.json())[0]||{};
   }
-  if(request!==reportRequest||region!==key||selectedState!==st)return;
-  countyTotal=Number(counts[0]?.reports_7d||0);reportsReady=true;
-  reports=(proAccess?data:[]).map(r=>({county:r.county,state:r.state,behavior:r.behavior,date:r.observed_on,saved:Date.parse(r.created_at)}));render();
+  if(request!==reportRequest||region!==key||selectedState!==st||access!==proAccess||token!==authToken)return;
+  countyTotal=Number(counts[0]?.reports_7d||0);reportsReady=true;behaviorTotals=totals;
+  reports=(access?data:[]).map(r=>({county:r.county,state:r.state,behavior:r.behavior,date:r.observed_on,saved:Date.parse(r.created_at)}));render();
  }catch(e){if(request===reportRequest){$('activityEmpty').textContent='Community reports are temporarily unavailable. Please try again.';$('feed').textContent='Reports unavailable. Please try again.'}}
 }
 let membership={plan:'free',source:'free',status:'active'},proAccess=false,membershipTimer=null;
@@ -137,7 +142,7 @@ function updateMembershipUI(){
 }
 async function refreshMembership(){
  clearTimeout(membershipTimer);
- proAccess=false;reports=[];membership={plan:'free',source:'free',status:'active'};
+ proAccess=false;reports=[];behaviorTotals=null;++reportRequest;membership={plan:'free',source:'free',status:'active'};
  if(authUser&&authToken){
   try{
    const u=new URL(api+'/rest/v1/rut_memberships');
@@ -157,7 +162,11 @@ async function refreshMembership(){
  if($('mapColorMode')){if(!proAccess){mapColorMode='volume';mapDays=7;$('mapColorMode').value='volume';$('mapTimeWindow').value='7'}}
  ++mapDataRequest;allMapCounts={};reportDataFetchedAt=0;if(map){recolorMap();await fetchMapReportData().then(recolorMap).catch(()=>{})}
 }
-let session=null,refreshInFlight=null;
+let session=null,refreshInFlight=null,authRetryUntil=0,authRetryTimer=null;
+function pauseEmailResend(seconds){
+ authRetryUntil=Date.now()+seconds*1000;clearInterval(authRetryTimer);updateSignInButton();
+ authRetryTimer=setInterval(()=>{if(Date.now()>=authRetryUntil){clearInterval(authRetryTimer);authRetryTimer=null}updateSignInButton()},1000);
+}
 function saveSession(value){
  session=value;authToken=value?.access_token||null;
  if(value)localStorage.setItem('rut_iq_session',JSON.stringify(value));else localStorage.removeItem('rut_iq_session');
@@ -165,11 +174,15 @@ function saveSession(value){
  clearTimeout(refreshTimer);
  if(value?.refresh_token){refreshTimer=setTimeout(()=>refreshSession().catch(()=>{}),Math.max(1000,(Number(value.expires_at)*1000-Date.now())-60000))}
 }
+function updateSignInButton(){
+ const wait=Math.max(0,Math.ceil((authRetryUntil-Date.now())/1000));
+ $('signInButton').textContent=authUser?'Signed in':wait?'Resend available in '+wait+'s':'Send Secure Sign-In Link';$('signInButton').disabled=!!authUser||wait>0;
+}
 function updateAuthUI(){
  $('mapGuestActions').hidden=!!authUser;$('heatmap').classList.toggle('guest-map',!authUser);
  updateAccountUI();
  $('authStatus').textContent=authUser?'Signed in as '+authUser.email:'Sign in securely to contribute reports';
- $('signInButton').textContent=authUser?'Signed in':'Send Secure Sign-In Link';$('signInButton').disabled=!!authUser;
+ updateSignInButton();
  $('signOutButton').hidden=!authUser;$('authEmail').hidden=!!authUser;
 }
 async function refreshSession(){
@@ -206,15 +219,25 @@ $('signOutButton').addEventListener('click',async()=>{
  $('authMessage').textContent='Signed out.';show('signup');
 });
 $('signInButton').addEventListener('click',async()=>{
+ if(authUser||Date.now()<authRetryUntil)return;
  const email=$('authEmail').value.trim(),msg=$('authMessage');msg.textContent='';
  if(!email||!$('authEmail').checkValidity()){msg.textContent='Enter a valid email address.';return}
  $('signInButton').disabled=true;
+ const controller=new AbortController(),timeout=setTimeout(()=>controller.abort(),20000);
  try{
   const redirect='https://rut-iq-preview.onrender.com/';
-  const resp=await fetch(api+'/auth/v1/otp?redirect_to='+encodeURIComponent(redirect),{method:'POST',headers:headers(),body:JSON.stringify({email,create_user:true})});
-  if(!resp.ok){const error=await resp.json().catch(()=>({}));throw Error(resp.status===429?'Too many sign-in requests. Please wait a minute before trying again.':error.msg||error.message||'Unable to send a sign-in link right now.')}
+  const resp=await fetch(api+'/auth/v1/otp?redirect_to='+encodeURIComponent(redirect),{method:'POST',headers:headers(),body:JSON.stringify({email,create_user:true}),signal:controller.signal});
+  if(!resp.ok){
+   const error=await resp.json().catch(()=>({}));
+   if(resp.status===429){
+    pauseEmailResend(60);
+    throw Error(error.error_code==='over_email_send_rate_limit'?'Sign-in email delivery has reached its service limit. Please try again later.':'Too many sign-in requests. Please wait before requesting another link.');
+   }
+   throw Error('We couldn’t send your sign-in email. Please try again later.');
+  }
+  pauseEmailResend(60);
   msg.textContent='Check your email for the secure Rut IQ sign-in link. Check your spam folder too.';
- }catch(e){msg.textContent=e.message}finally{$('signInButton').disabled=false}
+ }catch(e){msg.textContent=e.name==='AbortError'?'The email request timed out. Check your inbox before requesting another link.':e instanceof TypeError?'Unable to connect. Check your connection and try again.':e.message}finally{clearTimeout(timeout);updateAuthUI()}
 });
 window.addEventListener('hashchange',()=>{if(location.hash.includes('access_token=')||location.hash.includes('error='))initAuth().then(loadReports);else routeFromURL()});
 window.addEventListener('storage',event=>{if(event.key==='rut_iq_session')location.reload()});
@@ -251,17 +274,26 @@ function switchMapBase(type){
  if(mapLayer)mapLayer.bringToFront();
  for(const n of ['satellite','topo','street']){const b=$(n+'Btn');if(b){b.style.borderColor=n===type?'#d3ad78':'#6c5035';b.setAttribute('aria-pressed',String(n===type))}}
 }
-let stateBounds=null,countyCache={},mapLayers={},mapLoading={},allMapCounts={},mapInitialized=false;let nameByFips={},stateByFips={};let mapColorMode='volume',mapDays=7,reportDataFetchedAt=0,mapDataRequest=0;
+let mapInitInFlight=null,reportDataDay='';let stateBounds=null,countyCache={},mapLayers={},mapLoading={},allMapCounts={},mapInitialized=false;let nameByFips={},stateByFips={};let mapColorMode='volume',mapDays=7,reportDataFetchedAt=0,mapDataRequest=0;
 async function initMapData(){
  if(stateBounds)return;
- const r=await fetch('./state-bounds.json');if(!r.ok)throw Error('Map boundaries unavailable');
- stateBounds=await r.json();
- for(const [st,list] of Object.entries(regions)){for(const c of list){nameByFips[c.fips]=c.name;stateByFips[c.fips.slice(0,2)]=st}}
- const select=$('mapStateSelect');
- select.innerHTML='<option value="">Jump to a state...</option>'+Object.keys(regions).sort().map(st=>'<option>'+st+'</option>').join('');
- select.addEventListener('change',()=>{const st=select.value;const f=(regions[st]||[])[0]?.fips.slice(0,2);if(f&&stateBounds[f]){closeCountySheet(false);clearSearchLocation();$('mapFilters').open=false;const b=stateBounds[f];map.fitBounds([[b[1],b[0]],[b[3],b[2]]],{padding:[15,15]})}});
- await fetchMapReportData();
-
+ if(mapInitInFlight)return mapInitInFlight;
+ mapInitInFlight=(async()=>{
+  const geography=await regionsReady;
+  if(!geography)throw Error('County names unavailable. Refresh to try again.');
+  const r=await fetch('./state-bounds.json');if(!r.ok)throw Error('Map boundaries unavailable');
+  const bounds=await r.json();
+  const names={},states={};
+  for(const [st,list] of Object.entries(geography))for(const c of list){names[c.fips]=c.name;states[c.fips.slice(0,2)]=st}
+  nameByFips=names;stateByFips=states;stateBounds=bounds;
+  const select=$('mapStateSelect');
+  select.innerHTML='<option value="">Jump to a state...</option>'+Object.keys(geography).sort().map(st=>'<option>'+safe(st)+'</option>').join('');
+  select.addEventListener('change',()=>{
+   const st=select.value,f=(regions[st]||[])[0]?.fips.slice(0,2);
+   if(f&&stateBounds[f]){closeCountySheet(false);clearSearchLocation();$('mapFilters').open=false;const b=stateBounds[f];map.fitBounds([[b[1],b[0]],[b[3],b[2]]],{padding:[15,15]})}
+  });
+ })().finally(()=>{mapInitInFlight=null});
+ return mapInitInFlight;
 }
 function mapReportCount(data){return Number(data?.['reports_'+mapDays+'d']||0)}
 function mapSignal(data){
@@ -296,29 +328,24 @@ function updateMapLegend(){
  $('mapExplanation').textContent=signal?'Behavior colors summarize hunter reports, not predictions. At least 5 reports from 3 hunters are required; gray means insufficient evidence, not no rut.':'Colors show number of approved hunter reports in the selected time window, not confirmed rut intensity.';
 }
 async function fetchMapReportData(){
- const request=++mapDataRequest,access=proAccess,token=authToken;
- let resp;
- if(proAccess&&authToken){
-  resp=await fetch(api+'/rest/v1/rpc/rut_pro_county_signals?order=state.asc,county.asc&limit=1000',{method:'POST',headers:headers(authToken),body:'{}'});
- }else{
-  const u=new URL(api+'/rest/v1/rut_free_county_activity');
-  u.searchParams.set('select','state,county,reports_7d');u.searchParams.set('limit','1000');u.searchParams.set('order','state.asc,county.asc');
-  resp=await fetch(u,{headers:headers()});
- }
- if(!resp.ok)throw Error('Rut report data unavailable');
- let rows=await resp.json();
- for(let offset=rows.length;rows.length&&rows.length%1000===0&&offset<10000;offset+=1000){
-  const url=new URL(proAccess&&authToken?api+'/rest/v1/rpc/rut_pro_county_signals':api+'/rest/v1/rut_free_county_activity');url.searchParams.set('order','state.asc,county.asc');url.searchParams.set('offset',String(offset));url.searchParams.set('limit','1000');
-  const page=await fetch(url,{method:proAccess&&authToken?'POST':'GET',headers:headers(proAccess?authToken:undefined),...(proAccess&&authToken?{body:'{}'}:{})});if(!page.ok)throw Error('Rut report data unavailable');const data=await page.json();rows.push(...data);if(data.length<1000)break;
+ const request=++mapDataRequest,access=proAccess,token=authToken,day=localDate(),rows=[];
+ const endpoint=access&&token?'rut_pro_signals_for_day':'rut_free_counties_for_day';
+ for(let offset=0;offset<10000;offset+=1000){
+  const url=new URL(api+'/rest/v1/rpc/'+endpoint);
+  url.searchParams.set('order','state.asc,county.asc');url.searchParams.set('offset',String(offset));url.searchParams.set('limit','1000');
+  if(!access)url.searchParams.set('select','state,county,reports_7d');
+  const response=await fetch(url,dayRequest(access?token:undefined,day));
+  if(!response.ok)throw Error('Rut report data unavailable');
+  const data=await response.json();rows.push(...data);if(data.length<1000)break;
  }
  if(request!==mapDataRequest||access!==proAccess||token!==authToken)return;
  allMapCounts=Object.fromEntries(rows.map(r=>[r.state+'|'+r.county,r]));
- reportDataFetchedAt=Date.now();
+ reportDataFetchedAt=Date.now();reportDataDay=day;
 }
 function recolorMap(){
  updateMapLegend();if(activeMapCounty)renderCountySheet();
  for(const layer of Object.values(mapLayers)){layer.eachLayer(f=>{if(f.feature){f.setStyle(countyStyle(f.feature));if(f.isPopupOpen())f.closePopup()}})}
- $('mapStatus').textContent='Map covers all 50 states. '+(mapColorMode==='signal'?'Behavior colors require 5 reports from 3 hunters.':'Colors show real report totals.')+' Window: '+mapDays+' days.';
+ $('mapStatus').textContent='Map covers all 50 states. '+(mapColorMode==='signal'?'Behavior colors require 5 reports from 3 hunters.':'Colors show real report totals.')+' Window: '+mapDays+' days. Dates follow your device’s local calendar.';
 }
 $('mapColorMode').addEventListener('change',e=>{if(e.target.value==='signal'&&!proAccess){e.target.value='volume';show('plans');return}mapColorMode=e.target.value;recolorMap()});
 $('mapTimeWindow').addEventListener('change',e=>{if(e.target.value==='30'&&!proAccess){e.target.value='7';show('plans');return}mapDays=Number(e.target.value);recolorMap()});
@@ -466,7 +493,7 @@ async function loadHeatmap(){
  setTimeout(()=>{if(document.body.classList.contains('map-view'))map.invalidateSize({animate:false})},90);
  try{
   await initMapData();
-  if(Date.now()-reportDataFetchedAt>120000)await fetchMapReportData();
+  if(reportDataDay!==localDate()||Date.now()-reportDataFetchedAt>120000)await fetchMapReportData();
   if(!mapInitialized){mapInitialized=true;map.setView([39,-97],4)}
   await updateVisibleCounties();
  }catch(e){$('mapStatus').textContent='Unable to load nationwide county reports. Try refreshing.'}
@@ -494,7 +521,7 @@ $('deleteAccountForm').addEventListener('submit',async event=>{
   const result=await response.json().catch(()=>({}));
   if(!response.ok||result.deleted!==true)throw Error(response.status===401||response.status===403?'Your sign-in has expired. Sign in again before deleting your account.':result.message||'We couldn’t confirm deletion. Please try again.');
   saveSession(null);authUser=null;clearTimeout(membershipTimer);proAccess=false;membership={plan:'free',source:'free',status:'active'};
-  ++reportRequest;++dailyRequest;++mapDataRequest;reports=[];countyTotal=0;reportsReady=false;allMapCounts={};reportDataFetchedAt=0;
+  ++reportRequest;++dailyRequest;++mapDataRequest;reports=[];behaviorTotals=null;countyTotal=0;reportsReady=false;allMapCounts={};reportDataFetchedAt=0;
   $('reportForm').reset();$('date').value=localDate();$('authEmail').value='';$('reportSuccess').hidden=true;
   localStorage.removeItem('rut_iq_state');localStorage.removeItem('rut_iq_county');selectedState='';region='';setSelectors();$('regionPicker').open=true;
   if(searchMarker){map.removeLayer(searchMarker);searchMarker=null}
