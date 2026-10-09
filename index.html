@@ -8,7 +8,7 @@
 <div class="statline"><div class="stat"><small>Real hunter reports in county</small><strong id="total">0</strong><small>Submitted observations</small></div><div class="stat"><small>Latest report</small><strong id="last">—</strong><small>Community reports</small></div></div>
 <div class="section row"><h2>Rut activity right now</h2><span class="muted">From community reports</span></div><div class="card"><div id="activityEmpty" class="empty">No hunter reports in this county yet.<p>Be the first to report activity from this county.</p></div><div id="activityChart" style="display:none"><div class="chart" id="bars"></div><p class="muted">Counts by reported behavior. These are observations, not rut predictions.</p></div><button class="action cta" onclick="show('submit')">Log a rut observation</button></div>
 <div class="section"><h2>Historical rut timing</h2></div><div class="card"><div class="eyebrow">REGIONAL CONTEXT</div><h3>Historical reference</h3><p class="muted">County-specific historical rut estimates have not been verified for this preview. We'll add sourced regional references separately from live hunter reports.</p><div class="note">Historical timing is not a guarantee of when deer will rut this season.</div></div></section>
-<section id="heatmap" class="view"><div class="section row"><h2>Rut Activity Heat Map</h2><span class="pill">LIVE REPORT VOLUME</span></div><p class="muted" id="mapRegion">Choose a state on Home to explore activity.</p><div class="card" style="padding:9px"><div id="countyMap" role="application" aria-label="County report activity map"></div><div class="map-legend"><span class="key"><span class="swatch" style="background:#4b4a43"></span>No reports</span><span class="key"><span class="swatch" style="background:#857151"></span>1–2</span><span class="key"><span class="swatch" style="background:#bf8b49"></span>3–7</span><span class="key"><span class="swatch" style="background:#e2a348"></span>8+ reports</span></div><p class="muted">Colors show the number of real approved hunter reports in the last 7 days—not rut intensity. No reports does not mean deer aren't active.</p><p class="muted" id="mapStatus">Loading state and county boundaries...</p></div><div class="note">Tap a county to see its report count and open local observations. We never show exact hunting locations.</div></section>
+<section id="heatmap" class="view"><div class="section row"><h2>Rut Activity Heat Map</h2><span class="pill">LIVE REPORT VOLUME</span></div><p class="muted" id="mapRegion">Choose a state on Home to explore activity.</p><div class="card" style="padding:9px"><div class="row" style="gap:7px;margin:5px 5px 10px"><button class="ghost" style="flex:1" id="satelliteBtn" type="button" onclick="switchMapBase('satellite')">🛰 Satellite</button><button class="ghost" style="flex:1" id="topoBtn" type="button" onclick="switchMapBase('topo')">⛰ Topo</button><button class="ghost" style="flex:1" id="streetBtn" type="button" onclick="switchMapBase('street')">▤ Streets</button></div><div id="countyMap" role="application" aria-label="County report activity map"></div><div class="map-legend"><span class="key"><span class="swatch" style="background:#4b4a43"></span>No reports</span><span class="key"><span class="swatch" style="background:#857151"></span>1–2</span><span class="key"><span class="swatch" style="background:#bf8b49"></span>3–7</span><span class="key"><span class="swatch" style="background:#e2a348"></span>8+ reports</span></div><p class="muted">Colors show the number of real approved hunter reports in the last 7 days—not rut intensity. No reports does not mean deer aren't active.</p><p class="muted" id="mapStatus">Loading state and county boundaries...</p></div><div class="note">Tap a county to see its report count and open local observations. We never show exact hunting locations.</div></section>
 <section id="reports" class="view"><div class="section row"><h2>Local hunter reports</h2><button class="ghost" onclick="show('submit')">+ Add</button></div><p class="muted" id="regionLabel"></p><div class="card"><div class="eyebrow">COMMUNITY SIGHTINGS</div><div id="feed" class="empty">No hunter reports yet for this county.</div></div><div class="note">Submitted observations are shared as county-level activity. Names, contact details, and notes are not displayed publicly.</div></section>
 <section id="submit" class="view"><div class="section"><h2>Report rut activity</h2></div><div class="card"><div class="eyebrow">HUNTER SIGN-IN</div><p class="muted" id="authStatus">Checking sign-in...</p><label>Your email<input type="email" id="authEmail" placeholder="you@example.com" autocomplete="email"></label><button class="ghost cta" id="signInButton" type="button">Send Secure Sign-In Link</button><p class="muted" id="authMessage"></p></div><p class="muted">Help other hunters see how deer are behaving across your county. Don't include stand or property locations.</p><form class="card" id="reportForm"><label>County<select id="reportCounty"></select></label><label>What did you observe?<select id="behavior" required><option value="">Choose a behavior</option><option>Cruising</option><option>Chasing</option><option>Tending a doe</option><option>Breeding observed</option><option>Scrape / rub activity</option><option>No rut activity observed</option></select></label><label>Observation date<input id="date" type="date" required></label><label>Notes (optional)<textarea id="notes" rows="3" maxlength="300" placeholder="What did you see? Avoid exact locations."></textarea></label><div class="note">Only your selected county and observed behavior appear publicly. You must sign in to submit; never include exact hunting locations.</div><p id="message" class="muted"></p><button class="action cta" type="submit">Submit Hunter Report</button></form></section>
 <section id="about" class="view"><div class="section"><h2>About Rut IQ</h2></div><div class="card"><div class="eyebrow">BY GHOST RIDGE</div><h3>Built for hunters, by hunters.</h3><p class="muted">Rut IQ is being developed as a place for real hunters to report rut behavior and see regional trends built from genuine field observations.</p><div class="divider"></div><div class="note">LIVE COMMUNITY REPORTS — Hunter-submitted activity is live. Historical county rut calendars still require verified data.</div></div></section></main>
@@ -17,7 +17,7 @@
 const $=id=>document.getElementById(id);
 let selectedState=localStorage.getItem('rut_iq_state')||'Alabama';
 let region=localStorage.getItem('rut_iq_county')||'Tuscaloosa County';
-let reports=[];let regions={};let authUser=null;let authToken=null;let countyGeo=null;let map=null;let mapLayer=null;let mapActivity={};
+let reports=[];let regions={};let authUser=null;let authToken=null;let countyGeo=null;let map=null;let mapLayer=null;let mapActivity={};let baseMapLayer=null;let currentBaseMap='satellite';
 
 $('date').value=new Date().toLocaleDateString('en-CA');
 $('state').addEventListener('change',e=>{selectedState=e.target.value;region=(regions[selectedState]||[])[0]?.name||'';saveRegion();setSelectors();render();loadReports()});
@@ -83,9 +83,23 @@ $('reportForm').addEventListener('submit',async e=>{
   await loadReports();show('reports');
  }catch(err){msg.textContent=err.message}finally{button.disabled=false;button.textContent='Submit Hunter Report'}
 });
+function switchMapBase(type){
+ currentBaseMap=type;
+ if(!map||typeof L==='undefined')return;
+ if(baseMapLayer)map.removeLayer(baseMapLayer);
+ const sources={
+ satellite:['https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}','Imagery &copy; Esri, Maxar, Earthstar Geographics, and the GIS User Community',19],
+ topo:['https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/{z}/{y}/{x}','Tiles &copy; Esri and contributors',19],
+ street:['https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png','&copy; OpenStreetMap contributors',19]
+ };
+ const x=sources[type]||sources.satellite;
+ baseMapLayer=L.tileLayer(x[0],{maxZoom:x[2],attribution:x[1]}).addTo(map);
+ if(mapLayer)mapLayer.bringToFront();
+ for(const n of ['satellite','topo','street']){const b=$(n+'Btn');if(b)b.style.borderColor=n===type?'#d3ad78':'#6c5035'}
+}
 async function loadHeatmap(){
  if(typeof L==='undefined'){$('mapStatus').textContent='Map library unavailable. Check your connection and reload.';return}
- if(!map){map=L.map('countyMap',{zoomControl:true,scrollWheelZoom:false}).setView([39,-98],4);L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:18,attribution:'&copy; OpenStreetMap contributors'}).addTo(map)}
+ if(!map){map=L.map('countyMap',{zoomControl:true,scrollWheelZoom:false}).setView([39,-98],4);switchMapBase(currentBaseMap)}
  setTimeout(()=>map.invalidateSize(),70);
  const st=selectedState;$('mapRegion').textContent=st+' — county-level hunter reports';$('mapStatus').textContent='Loading approved reports...';
  try{
@@ -99,7 +113,7 @@ async function loadHeatmap(){
   const selected=countyGeo.features.filter(f=>f.properties.STATE===sc);
   mapLayer=L.geoJSON({type:'FeatureCollection',features:selected},{style:f=>{
    const county=byFips[f.properties.STATE+f.properties.COUNTY]||f.properties.NAME;const n=Number(mapActivity[county]?.reports_7d||0);
-   return {color:'#9c8568',weight:.65,fillColor:n>=8?'#e2a348':n>=3?'#bf8b49':n>=1?'#857151':'#4b4a43',fillOpacity:.7}
+   return {color:n?'#d5b485':'#b7a58d',weight:n?1.2:.7,fillColor:n>=8?'#f3aa47':n>=3?'#c89552':n>=1?'#97815e':'#4b4a43',fillOpacity:n?.45:.10}
   },onEachFeature:(f,layer)=>{
    let county=byFips[f.properties.STATE+f.properties.COUNTY]||f.properties.NAME;let row=mapActivity[county];let n=Number(row?.reports_7d||0);
    layer.bindPopup('<b>'+safe(county)+', '+safe(st)+'</b><p>'+n+' hunter reports in the past 7 days</p><button id="openCountyReports" class="action" style="font-size:12px">View County Reports</button>');
