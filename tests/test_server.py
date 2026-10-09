@@ -23,7 +23,7 @@ class ServerTests(unittest.TestCase):
         cls.server.server_close()
 
     def test_public_assets_and_headers(self):
-        for path in ['/', '/app.js', '/?view=home']:
+        for path in ['/', '/app.js', '/?view=home', '/manifest.webmanifest', '/sw.js', '/offline.html', '/icons/icon-192.png', '/icons/icon-512.png', '/icons/icon-maskable.png', '/icons/apple-touch-icon.png', '/icons/rut-iq.svg', '/county-neighbors.json']:
             with urllib.request.urlopen(self.base + path) as response:
                 self.assertEqual(response.status, 200)
                 self.assertEqual(response.headers['X-Frame-Options'], 'DENY')
@@ -32,7 +32,7 @@ class ServerTests(unittest.TestCase):
                 self.assertEqual(response.headers['Referrer-Policy'], 'no-referrer')
 
     def test_private_files_and_traversal_are_not_served(self):
-        for path in ['/server.py', '/.git/config', '/tests/test_server.py', '/maps/', '/maps/../server.py', '/%2e%2e/server.py', '/database/']:
+        for path in ['/server.py', '/.git/config', '/tests/test_server.py', '/maps/', '/maps/../server.py', '/%2e%2e/server.py', '/database/', '/icons/', '/scripts/build_county_neighbors.py']:
             with self.assertRaises(urllib.error.HTTPError) as error:
                 urllib.request.urlopen(self.base + path)
             self.assertEqual(error.exception.code, 404)
