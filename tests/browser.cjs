@@ -46,7 +46,7 @@ const headers = token => ({apikey:key,'Content-Type':'application/json',...(toke
    fs.writeFileSync('/tmp/rut-iq-test-session.json',JSON.stringify(session),{mode:0o600});
    console.log('LOGIN OK');await page.goto('about:blank');await page.goto(base+'#access_token='+encodeURIComponent(session.access_token)+'&refresh_token='+encodeURIComponent(session.refresh_token)+'&expires_in=3600',{waitUntil:'networkidle2'});
    console.log('CALLBACK',await page.evaluate(()=>({signedIn:!!authUser,pro:proAccess,status:document.querySelector('#authStatus').textContent,message:document.querySelector('#authMessage').textContent})));await page.waitForFunction(()=>authUser&&document.querySelector('#moreStatus').textContent!=='Checking...');
-   assert.equal(await page.evaluate(()=>location.hash),'');
+   assert.equal(await page.evaluate(()=>location.hash),'#home');
    assert.equal(await page.evaluate(()=>authUser.id),qa.id);
    assert.equal(await page.evaluate(()=>proAccess),mode==='pro');
    assert.equal(await page.evaluate(()=>refreshSession()),true);
@@ -63,6 +63,7 @@ const headers = token => ({apikey:key,'Content-Type':'application/json',...(toke
    }
    if(mode==='free'){
     await page.evaluate(()=>show('submit'));
+    await page.select('#reportState','Alabama');await page.select('#reportCounty','Tuscaloosa County');
     await page.select('#behavior','Cruising');await page.type('#notes','ISOLATED QA: not a hunter observation');
     await page.$eval('#reportForm button[type=submit]',e=>e.scrollIntoView({block:'center'}));await page.screenshot({path:'/tmp/rut-submit-before.png'});console.log('TARGET',await page.$eval('#reportForm button[type=submit]',e=>{const r=e.getBoundingClientRect();return {rect:r.toJSON(),hit:document.elementFromPoint(r.x+r.width/2,r.y+r.height/2)?.outerHTML}}));await page.click('#reportForm button[type=submit]');console.log('SUBMIT CLICKED');await page.waitForFunction(()=>!document.querySelector('#reportSuccess').hidden||document.querySelector('#message').textContent,{timeout:15000}).catch(()=>{});console.log('FORM',await page.evaluate(()=>({message:document.querySelector('#message').textContent,date:document.querySelector('#date').value,invalid:[...document.querySelectorAll('#reportForm :invalid')].map(x=>({id:x.id,value:x.value})),success:document.querySelector('#reportSuccess').textContent})));assert.equal(await page.$eval('#reportSuccess',e=>e.hidden),false);
     const own=await fetch(api+'/rest/v1/rut_reports?select=status,notes&user_id=eq.'+qa.id,{headers:headers(token)});const rows=await own.json();assert.equal(rows.length,1);assert.equal(rows[0].status,'hidden');
