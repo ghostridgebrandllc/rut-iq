@@ -30,6 +30,7 @@ function show(id,record=true){
  if(record&&location.hash!=='#'+id)history.pushState(null,'','#'+id);
  document.querySelectorAll('.view').forEach(x=>x.classList.toggle('show',x.id===id));
  document.querySelectorAll('.dock button').forEach(x=>{const active=x.dataset.tab===id;x.classList.toggle('active',active);if(active)x.setAttribute('aria-current','page');else x.removeAttribute('aria-current')});
+ document.body.classList.toggle('map-view',id==='heatmap');
  document.title=({home:'Daily Report',heatmap:'Rut Map',signup:'Hunter Sign-in',privacy:'Privacy',terms:'Terms of Use',help:'Help'}[id]||'Rut IQ')+' | Rut IQ by Ghost Ridge';
  if(id==='home')loadDailyReport();if(id==='plans')updateMembershipUI();if(id==='heatmap')setTimeout(()=>loadHeatmap(),50);
  render();window.scrollTo(0,0);
@@ -39,6 +40,7 @@ window.addEventListener('popstate',routeFromURL);
 document.addEventListener('click',e=>{const link=e.target.closest('a[href^="#"]');if(link&&routes.has(link.hash.slice(1))){e.preventDefault();show(link.hash.slice(1))}});
 function safe(s){return String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
 function render(){
+ $('behaviorSummary').hidden=!proAccess;
  if(!hasRegion()){$('total').textContent='—';$('regionLabel').textContent='Choose your county on Home to see local reports.';$('activityEmpty').textContent='Choose a county to see recent observations.';$('activityChart').style.display='none';$('activityEmpty').style.display='block';$('feed').innerHTML='<a href="#home">Choose your hunting region →</a>';return}
  const list=reports.filter(r=>r.county===region&&r.state===selectedState).sort((a,b)=>b.saved-a.saved);
  $('total').textContent=reportsReady?countyTotal:'—';
@@ -74,14 +76,14 @@ async function loadDailyReport(){
   if(request!==dailyRequest||st!==selectedState||county!==region)return;
   const r=data[0],total=Number(r?.reports_24h||0),hunters=Number(r?.hunters_24h||0);
   if(!total){
-   box.innerHTML='<div class="empty" style="padding:14px 8px"><strong style="color:#f2dfc3">No recent reports in this county</strong><p>There have been no approved observations submitted in the last 24 hours for deer activity seen today or yesterday. Be the first to share what you are seeing.</p></div><p class="daily-note">No reports does not mean deer are inactive. Activity depends on hunters contributing observations.</p>';
+   box.innerHTML='<div class="daily-stats"><div class="daily-stat"><strong>0</strong><span>Reports · 24 hours</span></div><div class="daily-stat"><strong>0</strong><span>Hunters reporting</span></div></div><p class="daily-empty">No fresh reports yet.</p><p class="daily-note">Be the first to share what you saw. An empty report does not mean deer are inactive.</p><p class="daily-meta">Includes reports sent in the last 24 hours for observations from today or yesterday.</p>';
    return;
   }
   const items=[['Cruising',r.cruising_24h],['Chasing',r.chasing_24h],['Tending',r.tending_24h],['Breeding',r.breeding_24h],['Scrapes / rubs',r.signs_24h],['No rut behavior seen',r.no_activity_24h]];
-  const badges=items.filter(x=>Number(x[1])>0).map(([label,n])=>'<span class="daily-chip">'+safe(label)+': '+Number(n)+'</span>').join('');
+  const badges=items.filter(x=>Number(x[1])>0).map(([label,n])=>'<div class="behavior-row"><span>'+safe(label)+'</span><strong>'+Number(n)+'</strong></div>').join('');
   const updated=r.latest_submission_at?new Date(r.latest_submission_at).toLocaleString('en-US',{month:'short',day:'numeric',hour:'numeric',minute:'2-digit'}):'';
   const confidence=total>=5&&hunters>=3?'Multiple hunters contributed. These are observations, not predictions.':'Early reports only — not enough independent observations to establish a reliable regional trend.';
-  box.innerHTML='<div class="daily-stats"><div class="daily-stat"><strong>'+total+'</strong><span>Reports submitted</span></div><div class="daily-stat"><strong>'+hunters+'</strong><span>Contributing hunters</span></div></div><div class="daily-behaviors">'+badges+'</div><p class="daily-note">'+safe(confidence)+'</p><p class="muted">Latest submission: '+safe(updated)+' · Reports submitted in the last 24 hours, describing observations from today or yesterday.</p>';
+  box.innerHTML='<div class="daily-stats"><div class="daily-stat"><strong>'+total+'</strong><span>Reports · 24 hours</span></div><div class="daily-stat"><strong>'+hunters+'</strong><span>Hunters reporting</span></div></div><div class="daily-behavior-list">'+badges+'</div><p class="daily-note">'+safe(confidence)+'</p><p class="daily-meta">Last report: '+safe(updated)+' · Reports submitted in the last 24 hours, describing observations from today or yesterday.</p>';
  }catch(error){
   if(request===dailyRequest)box.innerHTML='<p class="daily-note">Daily reports are temporarily unavailable. Please try again later.</p><button class="ghost" type="button" data-action="retry-daily">Retry</button>';
  }
@@ -267,6 +269,7 @@ function mapColor(data){
 }
 function updateMapLegend(){
  const signal=mapColorMode==='signal';
+ $('mapModeCaption').textContent=(signal?'Reported behavior':'Report volume')+' · '+mapDays+' days';
  const items=signal?[['#4b4a43','Insufficient evidence'],['#f3d343','Cruising / sign'],['#f28c28','Chasing'],['#d93630','Tending / breeding']]:[['#4b4a43','No reports'],['#f3d343','1–2 reports'],['#f28c28','3–7 reports'],['#d93630','8+ reports']];
  $('mapLegend').innerHTML=items.map(([color,label])=>'<span class="key"><span class="swatch" style="background:'+color+'"></span>'+label+'</span>').join('');
  $('mapExplanation').textContent=signal?'Behavior colors summarize hunter reports, not predictions. At least 5 reports from 3 hunters are required; gray means insufficient evidence, not no rut.':'Colors show number of approved hunter reports in the selected time window, not confirmed rut intensity.';
@@ -292,7 +295,7 @@ async function fetchMapReportData(){
  reportDataFetchedAt=Date.now();
 }
 function recolorMap(){
- updateMapLegend();
+ updateMapLegend();if(activeMapCounty)renderCountySheet();
  for(const layer of Object.values(mapLayers)){layer.eachLayer(f=>{if(f.feature){f.setStyle(countyStyle(f.feature));if(f.isPopupOpen())f.closePopup()}})}
  $('mapStatus').textContent='Map covers all 50 states. '+(mapColorMode==='signal'?'Behavior colors require 5 reports from 3 hunters.':'Colors show real report totals.')+' Window: '+mapDays+' days.';
 }
@@ -357,6 +360,20 @@ $('mapAddressForm').addEventListener('submit',async event=>{
  finally{setSearchLoading(false)}
 });
 
+let activeMapCounty=null;
+function openCountySheet(state,county){activeMapCounty={state,county};$('mapFilters').open=false;renderCountySheet();$('countySheet').hidden=false;$('heatmap').classList.add('has-county')}
+function renderCountySheet(){
+ if(!activeMapCounty)return;
+ const {state,county}=activeMapCounty,data=allMapCounts[state+'|'+county],count=mapReportCount(data);
+ $('sheetState').textContent=state;$('sheetCounty').textContent=county;
+ if(!reportDataFetchedAt){$('sheetContent').innerHTML='<p class="sheet-note">County report counts are not available yet. Try again when the map has loaded.</p>';return}
+ $('sheetContent').innerHTML='<div class="sheet-count"><strong>'+count+'</strong><span>reports · past '+mapDays+' days</span></div>'+(proAccess?'<p class="sheet-note">'+Number(data?.['hunters_'+mapDays+'d']||0)+' contributing hunters · '+safe(mapSignal(data).label)+'</p>':'')+'<p class="sheet-note">'+(count?'Hunter observations show what was reported here. They do not guarantee current rut activity.':'No reports in this window. Deer may still be active here.')+'</p>';
+}
+$('closeCountySheet').addEventListener('click',()=>{activeMapCounty=null;$('countySheet').hidden=true;$('heatmap').classList.remove('has-county')});
+function useMapCounty(destination){if(!activeMapCounty)return;selectedState=activeMapCounty.state;region=activeMapCounty.county;saveRegion();setSelectors();$('regionPicker').open=false;loadReports();loadDailyReport();show(destination)}
+$('sheetReports').addEventListener('click',()=>useMapCounty('reports'));
+$('sheetHome').addEventListener('click',()=>useMapCounty('home'));
+document.addEventListener('keydown',e=>{if(e.key==='Escape'){$('mapFilters').open=false;$('closeCountySheet').click()}});
 function isVisibleState(box,viewport){return box[0]<=viewport.getEast()&&box[2]>=viewport.getWest()&&box[1]<=viewport.getNorth()&&box[3]>=viewport.getSouth()}
 async function updateVisibleCounties(){
  if(!map||!stateBounds)return;
@@ -378,11 +395,7 @@ async function updateVisibleCounties(){
      const name=fipsToName[f.properties.STATE+f.properties.COUNTY]||f.properties.NAME;
      const data=allMapCounts[st+'|'+name],n=mapReportCount(data),signal=mapSignal(data);
      const hunterCount=Number(data?.['hunters_'+mapDays+'d']||0);
-     featureLayer.bindPopup(()=>{const data=allMapCounts[st+'|'+name];return '<b>'+safe(name)+', '+safe(st)+'</b><p>'+mapReportCount(data)+' hunter reports in the past '+mapDays+' days</p>'+(proAccess?'<p>'+Number(data?.['hunters_'+mapDays+'d']||0)+' contributing hunters</p><p>Reported behavior: '+safe(mapSignal(data).label)+'</p>':'<p>Pro adds behavior analysis and contributing-hunter counts.</p>')+'<button class="action countyOpen" type="button">View County Reports</button>'});
-     featureLayer.on('popupopen',()=>{
-      const button=featureLayer.getPopup()?.getElement()?.querySelector('.countyOpen');
-      if(button)button.onclick=()=>{selectedState=st;region=name;saveRegion();setSelectors();loadReports();loadDailyReport();show('reports')}
-     });
+     featureLayer.on('click',()=>openCountySheet(st,name));
     }
    }).addTo(map);
    mapLayers[code]=layer;
@@ -395,7 +408,7 @@ async function updateVisibleCounties(){
 async function loadHeatmap(){
  if(typeof L==='undefined'){$('mapStatus').textContent='Map library unavailable. Reload with an internet connection.';return}
  if(!map){
-  map=L.map('countyMap',{zoomControl:true,scrollWheelZoom:false,minZoom:3,maxZoom:19}).setView([39,-97],4);
+  map=L.map('countyMap',{zoomControl:true,scrollWheelZoom:true,minZoom:3,maxZoom:19}).setView([39,-97],4);
   switchMapBase(currentBaseMap);
   map.on('moveend',()=>{updateVisibleCounties()});
  }
