@@ -49,7 +49,13 @@ function show(id,record=true){
  if(id==='home')loadDailyReport();if(id==='plans')updateMembershipUI();if(id==='heatmap')setTimeout(()=>loadHeatmap(),50);
  render();window.scrollTo(0,0);
 }
-function routeFromURL(){const id=location.hash.slice(1);if(!id.includes('='))show(routes.has(id)?id:defaultRoute(),false)}
+function routeFromURL(){
+ const id=location.hash.slice(1);
+ if(id.includes('='))return;
+ const destination=authUser&&['signup','welcome'].includes(id)?'home':routes.has(id)?id:defaultRoute();
+ if(destination!==id&&authUser)history.replaceState(null,'','#'+destination);
+ show(destination,false);
+}
 window.addEventListener('popstate',routeFromURL);
 document.addEventListener('click',e=>{const link=e.target.closest('a[href^="#"]');if(link&&routes.has(link.hash.slice(1))){e.preventDefault();show(link.hash.slice(1))}});
 function safe(s){return String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}

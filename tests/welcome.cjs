@@ -51,6 +51,15 @@ const base=process.env.RUT_TEST_URL||'http://127.0.0.1:8911/';
  await page.evaluate(()=>{localStorage.removeItem('rut_iq_welcomed');localStorage.setItem('rut_iq_session',JSON.stringify({access_token:'ui-test-only',expires_at:Math.floor(Date.now()/1000)+3600}))});
  await page.goto(base,{waitUntil:'networkidle2'});await page.waitForFunction(()=>!document.body.classList.contains('booting'));
  assert.equal(await page.$eval('#home',e=>e.classList.contains('show')),true);
+ // Email links can finish in another tab while the original tab stays on signup.
+ for(const route of ['signup','welcome']){
+  await page.goto(base+'#'+route,{waitUntil:'networkidle2'});await page.reload({waitUntil:'networkidle2'});
+  await page.waitForFunction(()=>location.hash==='#home'&&document.querySelector('#home.show'));
+ }
+ await page.goto(base+'#privacy',{waitUntil:'networkidle2'});
+ assert.equal(await page.$eval('#privacy',e=>e.classList.contains('show')),true);
+ await page.evaluate(()=>{history.replaceState(null,'','#signup');window.dispatchEvent(new StorageEvent('storage',{key:'rut_iq_session'}))});
+ await page.waitForFunction(()=>location.hash==='#home'&&document.querySelector('#home.show'));
  await page.goto(base+'#access_token=ui-test-only&expires_in=3600',{waitUntil:'networkidle2'});
  await page.waitForFunction(()=>location.hash==='#home');
  assert.deepEqual(errors,[]);
