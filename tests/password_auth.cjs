@@ -3,7 +3,7 @@ const puppeteer=require('/Users/brentparham/.npm/_npx/4b4c857f6efdfb61/node_modu
 const base=process.env.RUT_TEST_URL||'http://127.0.0.1:8912/';
 (async()=>{
  const browser=await puppeteer.launch({headless:true,executablePath:'/Applications/Google Chrome.app/Contents/MacOS/Google Chrome'});
- const errors=[],calls=[];let failLogin=false;
+ const errors=[],calls=[];let failLogin=false,delayUser=false;
  const user={id:'password-browser-test',email:'qa@example.invalid'};
  async function setup(context){
   const page=await context.newPage();const wait=page.waitForFunction.bind(page);page.waitForFunction=(fn,...args)=>wait(fn,{polling:100},...args);page.on('pageerror',e=>errors.push(e.message));
@@ -16,7 +16,7 @@ const base=process.env.RUT_TEST_URL||'http://127.0.0.1:8912/';
    const path=new URL(r.url()).pathname,body=r.postData()?JSON.parse(r.postData()):null;
    calls.push({path,method:r.method(),body,authorization:r.headers().authorization,url:r.url()});
    if(path.endsWith('/token'))return failLogin?reply({error_code:'invalid_credentials'},400):reply({access_token:'browser-only-token',refresh_token:'browser-only-refresh',expires_in:3600,user});
-   if(path.endsWith('/user'))return reply(user);
+   if(path.endsWith('/user'))return delayUser&&r.method()==='GET'?setTimeout(()=>reply(user),1200):reply(user);
    if(path.endsWith('/signup'))return reply(user);
    if(path.endsWith('/recover')||path.endsWith('/otp')||path.endsWith('/logout'))return reply({});
    if(path.endsWith('/rut_test_access')||path.endsWith('/rut_is_pro'))return reply(false);
@@ -47,8 +47,9 @@ const base=process.env.RUT_TEST_URL||'http://127.0.0.1:8912/';
   await p.waitForFunction(()=>$('passwordMessage').textContent.includes('Password saved'));
   assert(calls.some(x=>x.method==='PUT'&&x.authorization==='Bearer browser-only-token'));
   assert.equal(await p.$eval('#newPassword',e=>e.value),'');
+  delayUser=true;await other.evaluate(()=>{void initAuth()});await new Promise(r=>setTimeout(r,150));
   await p.evaluate(()=>show('signup'));await p.click('#signOutButton');
-  await other.waitForFunction(()=>!authUser);await ctx.close();
+  await other.waitForFunction(()=>!authUser).catch(async e=>{console.log('logout diagnostic',await p.evaluate(()=>({route:location.hash,signed:!!authUser,local:!!localStorage.getItem('rut_iq_session')})),await other.evaluate(()=>({route:location.hash,signed:!!authUser,local:!!localStorage.getItem('rut_iq_session')})));throw e});await new Promise(r=>setTimeout(r,1500));assert.equal(await other.evaluate(()=>!!authUser),false,'Late session validation must not restore logout');delayUser=false;await ctx.close();
 
   ctx=await browser.createBrowserContext();p=await setup(ctx);await login(p,false);
   assert(await p.evaluate(()=>!localStorage.getItem('rut_iq_session')&&!!sessionStorage.getItem('rut_iq_session')));

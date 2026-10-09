@@ -227,18 +227,23 @@ async function initAuth(){
  else if(session)saveSession(session);
  else authToken=localStorage.getItem('rut_iq_access_token');
  if(params.has('access_token')||params.has('error'))history.replaceState(null,'',location.pathname+location.search);
+ const generation=authGeneration;
  if(session?.refresh_token&&Number(session.expires_at)*1000<Date.now()+60000)await refreshSession().catch(()=>{});
+ if(generation!==authGeneration)return;
  if(authToken){try{
   const r=await fetch(api+'/auth/v1/user',{headers:headers(authToken)});
-  if(r.ok)authUser=await r.json();else if(r.status===401){saveSession(null);authUser=null}
+  if(generation!==authGeneration)return;
+  if(r.ok){const user=await r.json();if(generation!==authGeneration)return;authUser=user}else if(r.status===401){saveSession(null);authUser=null}
  }catch(e){$('authMessage').textContent='Unable to verify your session. Check your connection and refresh.'}}
  updateAuthUI();await refreshMembership();
+ if(generation!==authGeneration)return;
  if(params.has('error'))show('signup');
  if(authUser){localStorage.setItem('rut_iq_welcomed','1');if(params.get('access_token')){$('authMessage').textContent='You’re signed in. Your hunter account is ready.';show(params.get('type')==='recovery'?'account':'home');if(params.get('type')==='recovery'){$('passwordMessage').textContent='Choose your new password below.';$('newPassword').focus()}}}
 }
 $('signOutButton').addEventListener('click',async()=>{
- const token=authToken;saveSession(null);localStorage.setItem('rut_iq_signout',String(Date.now()));authUser=null;updateAuthUI();await refreshMembership();await loadReports();
+ const token=authToken;saveSession(null);localStorage.setItem('rut_iq_signout',String(Date.now()));authUser=null;updateAuthUI();
  if(token)fetch(api+'/auth/v1/logout',{method:'POST',headers:headers(token)}).catch(()=>{});
+ await refreshMembership();await loadReports();
  $('authMessage').textContent='Signed out.';show('signup');
 });
 $('signInButton').addEventListener('click',async()=>{
@@ -266,7 +271,9 @@ $('signInButton').addEventListener('click',async()=>{
 window.addEventListener('hashchange',()=>{if(location.hash.includes('access_token=')||location.hash.includes('error='))initAuth().then(loadReports);else routeFromURL()});
 window.addEventListener('storage',event=>{
  if(event.key==='rut_iq_signout'){saveSession(null);authUser=null;updateAuthUI();refreshMembership().then(loadReports);return}
- if(event.key==='rut_iq_session'&&!sessionStorage.getItem('rut_iq_session'))location.reload();
+ if(event.key==='rut_iq_session'&&!sessionStorage.getItem('rut_iq_session')){
+  if(event.oldValue&&!event.newValue){saveSession(null);authUser=null;updateAuthUI();refreshMembership().then(loadReports)}else location.reload();
+ }
 });
 document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible'&&authUser){(async()=>{if(session?.refresh_token)await refreshSession();await refreshMembership();await loadReports();await loadDailyReport()})().catch(()=>{})}});
 $('reportForm').addEventListener('submit',async e=>{
