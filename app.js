@@ -32,6 +32,7 @@ function enterAccount(mode){
 }
 $('welcomeCreate').addEventListener('click',()=>enterAccount('create'));
 $('welcomeSignIn').addEventListener('click',()=>enterAccount('signin'));
+$('mapJoin').addEventListener('click',()=>enterAccount('create'));
 $('welcomeExplore').addEventListener('click',()=>{localStorage.setItem('rut_iq_welcomed','1');show('heatmap')});
 function show(id,record=true){
  if(!routes.has(id))id='home';
@@ -159,6 +160,7 @@ function saveSession(value){
  if(value?.refresh_token){refreshTimer=setTimeout(()=>refreshSession().catch(()=>{}),Math.max(1000,(Number(value.expires_at)*1000-Date.now())-60000))}
 }
 function updateAuthUI(){
+ $('mapGuestActions').hidden=!!authUser;$('heatmap').classList.toggle('guest-map',!authUser);
  updateAccountUI();
  $('authStatus').textContent=authUser?'Signed in as '+authUser.email:'Sign in securely to contribute reports';
  $('signInButton').textContent=authUser?'Signed in':'Send Secure Sign-In Link';$('signInButton').disabled=!!authUser;

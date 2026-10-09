@@ -21,6 +21,14 @@ const base=process.env.RUT_TEST_URL||'http://127.0.0.1:8911/';
  assert.equal(await page.$eval('#signupTitle',e=>e.textContent),'Welcome back');
  await page.click('.welcome-back');await page.click('#welcomeExplore');
  await page.waitForFunction(()=>map&&Object.keys(mapLayers).length>0);
+ for(const width of [320,390]){
+ await page.setViewport({width,height:844,isMobile:true,hasTouch:true});
+ for(const sel of ['.map-back','#mapJoin'])assert.ok(await page.$eval(sel,e=>{const r=e.getBoundingClientRect();return r.left>=0&&r.right<=innerWidth&&r.height>=44&&e.contains(document.elementFromPoint(r.x+r.width/2,r.y+r.height/2))}));
+ await page.click('.map-back');assert.equal(await page.$eval('#welcome',e=>e.classList.contains('show')),true);
+ await page.click('#welcomeExplore');await page.click('#mapJoin');assert.equal(await page.$eval('#signup',e=>e.classList.contains('show')),true);
+ await page.click('.welcome-back');await page.click('#welcomeExplore');
+ }
+ await page.screenshot({path:'/tmp/rut-map-back.png'});
  assert.equal(await page.evaluate(()=>localStorage.getItem('rut_iq_welcomed')),'1');
  await page.goto(base,{waitUntil:'networkidle2'});assert.equal(await page.$eval('#home',e=>e.classList.contains('show')),true);
  await page.evaluate(()=>localStorage.removeItem('rut_iq_welcomed'));
