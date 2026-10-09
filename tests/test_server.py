@@ -26,6 +26,7 @@ class ServerTests(unittest.TestCase):
         for path in ['/', '/app.js', '/?view=home', '/manifest.webmanifest', '/sw.js', '/offline.html', '/icons/icon-192.png', '/icons/icon-512.png', '/icons/icon-maskable.png', '/icons/apple-touch-icon.png', '/icons/rut-iq.svg', '/county-neighbors.json']:
             with urllib.request.urlopen(self.base + path) as response:
                 self.assertEqual(response.status, 200)
+                response.read()
                 self.assertEqual(response.headers['X-Frame-Options'], 'DENY')
                 self.assertEqual(response.headers['X-Content-Type-Options'], 'nosniff')
                 self.assertIn("frame-ancestors 'none'", response.headers['Content-Security-Policy'])
