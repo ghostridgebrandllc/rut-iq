@@ -1,0 +1,23 @@
+{
+  "app": "rut_iq",
+  "checkout_enabled": false,
+  "livemode": false,
+  "stripe_account": "acct_1ULxCYRqpCnvGztz",
+  "product": "prod_VPM2YCZqIUvDnJ",
+  "prices": {
+    "monthly": {
+      "id": "price_1UOXLFRqpCnvGztzHmMXcHnE",
+      "amount": 799,
+      "currency": "usd",
+      "interval": "month",
+      "active": false
+    },
+    "annual": {
+      "id": "price_1UOXLJRqpCnvGztzJhbRVsDs",
+      "amount": 4999,
+      "currency": "usd",
+      "interval": "year",
+      "active": false
+    }
+  }
+}
