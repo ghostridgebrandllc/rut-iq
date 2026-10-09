@@ -22,7 +22,17 @@ function setSelectors(){
  $('county').innerHTML=opts;$('reportCounty').innerHTML=opts;$('county').disabled=!selectedState;$('reportCounty').disabled=!selectedState;updateRegionSummary();
 }
 fetch('./regions.json').then(r=>{if(!r.ok)throw Error('Regions unavailable');return r.json()}).then(data=>{regions=data;if(!regions[selectedState])selectedState='';setSelectors();$('regionPicker').open=!hasRegion();render();loadReports();loadDailyReport()}).catch(e=>{ $('county').innerHTML='<option>Unable to load counties</option>'; $('reportCounty').innerHTML='<option>Unable to load counties</option>'; $('reportForm').querySelector('button[type=submit]').disabled=true; $('regionLabel').textContent='Refresh to load counties'; });
-const routes=new Set(['home','heatmap','reports','submit','signup','plans','about','help','privacy','terms','account']);
+const routes=new Set(['welcome','home','heatmap','reports','submit','signup','plans','about','help','privacy','terms','account']);
+function defaultRoute(){return authUser||localStorage.getItem('rut_iq_welcomed')==='1'?'home':'welcome'}
+function enterAccount(mode){
+ localStorage.setItem('rut_iq_welcomed','1');
+ $('signupTitle').textContent=mode==='create'?'Create your free account':'Welcome back';
+ $('signupLead').textContent=mode==='create'?'Join the hunters building a clearer picture of the rut.':'Sign in with a secure link sent to your email.';
+ show('signup');$('authEmail').focus({preventScroll:true});
+}
+$('welcomeCreate').addEventListener('click',()=>enterAccount('create'));
+$('welcomeSignIn').addEventListener('click',()=>enterAccount('signin'));
+$('welcomeExplore').addEventListener('click',()=>{localStorage.setItem('rut_iq_welcomed','1');show('heatmap')});
 function show(id,record=true){
  if(!routes.has(id))id='home';
  if(id==='submit'&&!authUser)id='signup';
@@ -31,13 +41,14 @@ function show(id,record=true){
  document.querySelectorAll('.view').forEach(x=>x.classList.toggle('show',x.id===id));
  document.querySelectorAll('.dock button').forEach(x=>{const active=x.dataset.tab===id;x.classList.toggle('active',active);if(active)x.setAttribute('aria-current','page');else x.removeAttribute('aria-current')});
  document.body.classList.toggle('map-view',id==='heatmap');
+ document.body.classList.toggle('welcome-view',id==='welcome');
  if(id!=='heatmap'){$('mapAddressInput').blur();document.body.classList.remove('map-searching','map-keyboard')}
  syncMapViewport();
  document.title=({home:'Daily Report',heatmap:'Rut Map',signup:'Hunter Sign-in',privacy:'Privacy',terms:'Terms of Use',help:'Help'}[id]||'Rut IQ')+' | Rut IQ by Ghost Ridge';
  if(id==='home')loadDailyReport();if(id==='plans')updateMembershipUI();if(id==='heatmap')setTimeout(()=>loadHeatmap(),50);
  render();window.scrollTo(0,0);
 }
-function routeFromURL(){const id=location.hash.slice(1);if(!id.includes('='))show(routes.has(id)?id:'home',false)}
+function routeFromURL(){const id=location.hash.slice(1);if(!id.includes('='))show(routes.has(id)?id:defaultRoute(),false)}
 window.addEventListener('popstate',routeFromURL);
 document.addEventListener('click',e=>{const link=e.target.closest('a[href^="#"]');if(link&&routes.has(link.hash.slice(1))){e.preventDefault();show(link.hash.slice(1))}});
 function safe(s){return String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
@@ -179,7 +190,7 @@ async function initAuth(){
  }catch(e){$('authMessage').textContent='Unable to verify your session. Check your connection and refresh.'}}
  updateAuthUI();await refreshMembership();
  if(params.has('error'))show('signup');
- if(authUser&&params.get('access_token')){$('authMessage').textContent='You’re signed in. Your hunter account is ready.';show('submit')}
+ if(authUser){localStorage.setItem('rut_iq_welcomed','1');if(params.get('access_token')){$('authMessage').textContent='You’re signed in. Your hunter account is ready.';show('home')}}
 }
 $('signOutButton').addEventListener('click',async()=>{
  const token=authToken;saveSession(null);authUser=null;updateAuthUI();await refreshMembership();await loadReports();
@@ -452,7 +463,7 @@ async function loadHeatmap(){
   await updateVisibleCounties();
  }catch(e){$('mapStatus').textContent='Unable to load nationwide county reports. Try refreshing.'}
 }
-initAuth().then(()=>{routeFromURL();loadReports()});
+initAuth().then(()=>{routeFromURL();loadReports()}).catch(()=>{show('signup',false);$('authMessage').textContent='We couldn’t check your sign-in. Please try again.'}).finally(()=>document.body.classList.remove('booting'));
 
 document.addEventListener('click',event=>{const button=event.target.closest('button');if(!button)return;if(button.dataset.route)show(button.dataset.route);else if(button.dataset.base)switchMapBase(button.dataset.base);else if(button.dataset.action==='reset-map')resetNationMap();else if(button.dataset.action==='retry-daily')loadDailyReport()});
 
