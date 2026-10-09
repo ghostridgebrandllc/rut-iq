@@ -3,6 +3,7 @@ function localDate(){const d=new Date();return d.getFullYear()+'-'+String(d.getM
 const startingHome=readLocalJSON('rut_iq_home_county',null);
 let selectedState=startingHome?.state||localStorage.getItem('rut_iq_state')||'';
 let region=startingHome?.county||localStorage.getItem('rut_iq_county')||'';
+let testAccess=false,testMode=false,testEpoch=0,testAccessRequest=0;
 let behaviorTotals=null;let reports=[];let regions={};let countyTotal=0;let reportsReady=false;let authUser=null;let authToken=null;let countyGeo=null;let map=null;let mapLayer=null;let mapActivity={};let baseMapLayer=null;let currentBaseMap='satellite';
 
 $('date').value=localDate();$('date').max=localDate();
@@ -95,7 +96,7 @@ async function loadDailyReport(){
   const url=new URL(api+'/rest/v1/rpc/rut_daily_counties_for_day');
   url.searchParams.set('select','reports_24h,hunters_24h,cruising_24h,chasing_24h,tending_24h,breeding_24h,signs_24h,no_activity_24h,latest_submission_at');
   url.searchParams.set('state','eq.'+st);url.searchParams.set('county','eq.'+county);url.searchParams.set('limit','1');
-  const response=await fetch(url,dayRequest());
+  const response=await rutFetch(url,dayRequest());
   if(!response.ok)throw Error('Recent activity is unavailable');
   const data=await response.json();
   if(request!==dailyRequest||st!==selectedState||county!==region)return;
@@ -122,12 +123,12 @@ async function loadReports(){
  try{
   const u=new URL(api+'/rest/v1/rpc/rut_free_counties_for_day');
   u.searchParams.set('select','reports_7d');u.searchParams.set('state','eq.'+st);u.searchParams.set('county','eq.'+key);
-  const resp=await fetch(u,dayRequest(undefined,day));if(!resp.ok)throw Error('Could not load live reports');
+  const resp=await rutFetch(u,dayRequest(undefined,day));if(!resp.ok)throw Error('Could not load live reports');
   const counts=await resp.json();let data=[],totals=null;
   if(access&&token){
    const detail=new URL(api+'/rest/v1/rpc/rut_reports_for_day');detail.searchParams.set('select','state,county,behavior,observed_on,created_at');detail.searchParams.set('state','eq.'+st);detail.searchParams.set('county','eq.'+key);detail.searchParams.set('order','created_at.desc,id.asc');detail.searchParams.set('limit','200');
    const summary=new URL(api+'/rest/v1/rpc/rut_pro_signals_for_day');summary.searchParams.set('state','eq.'+st);summary.searchParams.set('county','eq.'+key);
-   const [r,a]=await Promise.all([fetch(detail,dayRequest(token,day)),fetch(summary,dayRequest(token,day))]);
+   const [r,a]=await Promise.all([rutFetch(detail,dayRequest(token,day)),rutFetch(summary,dayRequest(token,day))]);
    if(!r.ok||!a.ok)throw Error('Could not load behavior details');
    data=await r.json();totals=(await a.json())[0]||{};
   }
@@ -145,6 +146,7 @@ function updateMembershipUI(){
  if($('planMessage'))$('planMessage').textContent=proAccess?'Pro access is active. Thank you for helping build Rut IQ.':authUser?'Your Free account is active. Pro checkout is not enabled yet; no payments can be taken.':'Sign in to contribute reports. Pro checkout is not enabled yet.';
 }
 async function refreshMembership(){
+ await refreshTestAccess();
  clearTimeout(membershipTimer);
  proAccess=false;reports=[];behaviorTotals=null;++reportRequest;membership={plan:'free',source:'free',status:'active'};
  if(authUser&&authToken){
@@ -161,7 +163,7 @@ async function refreshMembership(){
    proAccess=verified.ok&&(await verified.json())===true;
   }catch(e){proAccess=false;membership={plan:'free',source:'free',status:'inactive'}}
  }
- updateMembershipUI();loadComparison();if($('home').classList.contains('show'))loadHomeChanges();
+ updateMembershipUI();loadComparison();if($('home').classList.contains('show'))loadDailyReport();
  if(proAccess&&membership.current_period_end){membershipTimer=setTimeout(()=>refreshMembership().then(loadReports),Math.min(2147483647,Math.max(500,Date.parse(membership.current_period_end)-Date.now()+50)))}
  if($('mapColorMode')){if(!proAccess){mapColorMode='volume';mapDays=7;$('mapColorMode').value='volume';$('mapTimeWindow').value='7'}}
  ++mapDataRequest;allMapCounts={};reportDataFetchedAt=0;if(map){recolorMap();await fetchMapReportData().then(recolorMap).catch(()=>{})}
@@ -183,6 +185,7 @@ function updateSignInButton(){
  $('signInButton').textContent=authUser?'Signed in':wait?'Resend available in '+wait+'s':'Send Secure Sign-In Link';$('signInButton').disabled=!!authUser||wait>0;
 }
 function updateAuthUI(){
+ if(!authUser){++testAccessRequest;setTestState(false,false)}
  $('mapGuestActions').hidden=!!authUser;$('heatmap').classList.toggle('guest-map',!authUser);
  updateAccountUI();
  $('authStatus').textContent=authUser?'Signed in as '+authUser.email:'Sign in securely to contribute reports';
@@ -338,7 +341,7 @@ async function fetchMapReportData(){
   const url=new URL(api+'/rest/v1/rpc/'+endpoint);
   url.searchParams.set('order','state.asc,county.asc');url.searchParams.set('offset',String(offset));url.searchParams.set('limit','1000');
   if(!access)url.searchParams.set('select','state,county,reports_7d');
-  const response=await fetch(url,dayRequest(access?token:undefined,day));
+  const response=await rutFetch(url,dayRequest(access?token:undefined,day));
   if(!response.ok)throw Error('Rut report data unavailable');
   const data=await response.json();rows.push(...data);if(data.length<1000)break;
  }
@@ -590,11 +593,11 @@ async function loadHomeChanges(){
  const st=selectedState,co=region,token=authToken,access=proAccess,id=++changeRequest;
  const box=$('changesContent');$('nearbyContent').textContent='';
  if(!hasRegion()){box.innerHTML='<p class="muted">Choose a county to start your field updates.</p>';return}
- const key=countyKey(st,co);
+ const key=(testMode?'test:'+authUser.id+'|':'')+countyKey(st,co);
  if(!visitStarts.has(key)){const visits=readLocalJSON('rut_iq_visits',{});const t=visits&&typeof visits==='object'?visits[key]:null;visitStarts.set(key,typeof t==='string'&&Number.isFinite(Date.parse(t))?t:null)}
  box.innerHTML='<p class="muted">Checking for new reports…</p>';
  try{
-  const response=await fetch(api+'/rest/v1/rpc/rut_county_changes',{method:'POST',headers:headers(token),body:JSON.stringify({focus_state:st,focus_county:co,as_of:localDate(),last_seen:visitStarts.get(key)})});
+  const response=await rutFetch(api+'/rest/v1/rpc/rut_county_changes',{method:'POST',headers:headers(token),body:JSON.stringify({focus_state:st,focus_county:co,as_of:localDate(),last_seen:visitStarts.get(key)})});
   if(!response.ok)throw Error('Changes unavailable');const data=await response.json();
   if(id!==changeRequest||st!==selectedState||co!==region||token!==authToken||access!==proAccess)return;
   const count=Number(data.new_reports||0);
@@ -618,7 +621,7 @@ async function loadNearbyCounties(st,co,id){
   const u=new URL(api+'/rest/v1/rpc/rut_free_counties_for_day');
   u.searchParams.set('or','('+areas.map(c=>'and(state.eq.'+JSON.stringify(c.state)+',county.eq.'+JSON.stringify(c.county)+')').join(',')+')');
   u.searchParams.set('select','state,county,reports_7d');
-  const r=await fetch(u,dayRequest());if(!r.ok)throw Error();const rows=await r.json();
+  const r=await rutFetch(u,dayRequest());if(!r.ok)throw Error();const rows=await r.json();
   if(id!==changeRequest||st!==selectedState||co!==region)return;
   const totals=new Map(rows.map(x=>[countyKey(x.state,x.county),Number(x.reports_7d)]));
   const top=areas.map(c=>({...c,count:totals.get(countyKey(c.state,c.county))||0})).sort((a,b)=>b.count-a.count||a.county.localeCompare(b.county)).slice(0,6);
@@ -632,7 +635,7 @@ async function loadComparison(){
  if(!proAccess||!token||!hasRegion()){$('comparisonContent').innerHTML='<p class="muted">Choose a county to compare reports.</p>';return}
  $('comparisonContent').innerHTML='<p class="muted">Comparing completed days…</p>';
  try{
-  const r=await fetch(api+'/rest/v1/rpc/rut_county_comparison',{method:'POST',headers:headers(token),body:JSON.stringify({focus_state:st,focus_county:co,as_of:localDate()})});
+  const r=await rutFetch(api+'/rest/v1/rpc/rut_county_comparison',{method:'POST',headers:headers(token),body:JSON.stringify({focus_state:st,focus_county:co,as_of:localDate()})});
   if(!r.ok)throw Error();const rows=await r.json();
   if(id!==comparisonRequest||token!==authToken||!proAccess||st!==selectedState||co!==region)return;
   const a=rows.find(x=>x.period==='recent'),b=rows.find(x=>x.period==='previous');if(!a||!b)throw Error();
@@ -646,7 +649,7 @@ async function loadComparison(){
 let lastSubmittedCounty=null;
 function showReportReceipt(st,co,behavior,date,isQA){
  lastSubmittedCounty={state:st,county:co};
- $('reportSuccess').innerHTML='<div class="receipt-mark" aria-hidden="true">✓</div><div class="eyebrow">'+(isQA?'PRIVATE TEST REPORT':'OBSERVATION SAVED')+'</div><h3 tabindex="-1" id="receiptTitle">'+(isQA?'Your test report is saved privately.':'Added to '+safe(co)+'.')+'</h3><p>'+safe(behavior)+' · '+formatDay(date)+'<br><span class="muted">'+safe(co)+', '+safe(st)+'</span></p><p class="muted">'+(isQA?'Excluded from public reports and map activity.':'Thank you for contributing. Only county-level activity is shared; your identity and notes stay private.')+'</p><div class="receipt-actions"><button class="action" data-action="receipt-map">View county map</button><button class="ghost" data-action="receipt-another">Log another observation</button></div>';
+ $('reportSuccess').innerHTML='<div class="receipt-mark" aria-hidden="true">✓</div><div class="eyebrow">'+(isQA?'PRIVATE TEST REPORT':'OBSERVATION SAVED')+'</div><h3 tabindex="-1" id="receiptTitle">'+(isQA?'Your test report is saved privately.':'Added to '+safe(co)+'.')+'</h3><p>'+safe(behavior)+' · '+formatDay(date)+'<br><span class="muted">'+safe(co)+', '+safe(st)+'</span></p><p class="muted">'+(isQA?'Excluded from public reports. Private Test Mode shows this in your own Home and map views.':'Thank you for contributing. Only county-level activity is shared; your identity and notes stay private.')+'</p><div class="receipt-actions"><button class="action" data-action="receipt-map">View county map</button><button class="ghost" data-action="receipt-another">Log another observation</button></div>';
  $('reportSuccess').hidden=false;show('reports');$('receiptTitle').focus({preventScroll:true});
 }
 async function focusCountyMap(c){
@@ -681,4 +684,52 @@ $('installButton').addEventListener('click',async()=>{if(!installPrompt)return;c
 window.matchMedia('(display-mode: standalone)').addEventListener('change',updateInstallUI);
 updateInstallUI();
 if('serviceWorker' in navigator)window.addEventListener('load',()=>navigator.serviceWorker.register('./sw.js').catch(()=>{}));
+
+function updateTestUI(){
+ $('testControls').hidden=!testAccess;
+ $('testToggle').checked=testMode;
+ $('testModeStatus').textContent=testMode?'Only your own private test reports are shown.':'You are viewing public reports. Your submissions still stay private.';
+ document.querySelectorAll('[data-test-notice]').forEach(e=>{
+  e.hidden=!testAccess;
+  e.textContent=testMode?'PRIVATE TEST MODE · Your reports only · Hidden from other hunters':'PRIVATE TEST ACCOUNT · Viewing public reports · Your submissions stay private';
+ });
+}
+function setTestState(access,enabled){
+ const changed=testAccess!==access||testMode!==enabled;testAccess=access;testMode=access&&enabled;
+ if(changed){
+  ++testEpoch;++reportRequest;++dailyRequest;++mapDataRequest;++changeRequest;++comparisonRequest;
+  reports=[];behaviorTotals=null;countyTotal=0;reportsReady=false;allMapCounts={};reportDataFetchedAt=0;reportDataDay='';
+  $('dailyContent').textContent='Refreshing county reports…';$('changesContent').textContent='Refreshing county updates…';$('nearbyContent').textContent='';$('comparisonContent').textContent='';
+  if(map)recolorMap();render();
+ }
+ updateTestUI();return changed;
+}
+async function refreshTestAccess(){
+ const token=authToken,user=authUser?.id,id=++testAccessRequest;
+ if(!token||!user){setTestState(false,false);return}
+ let access=false;
+ try{const r=await fetch(api+'/rest/v1/rpc/rut_test_access',{method:'POST',headers:headers(token),body:'{}'});access=r.ok&&(await r.json())===true}catch{}
+ if(id!==testAccessRequest||token!==authToken||user!==authUser?.id)return;
+ setTestState(access,access&&sessionStorage.getItem('rut_iq_test_public_'+user)!=='1');
+}
+const testEndpoints=new Set(['rut_free_counties_for_day','rut_daily_counties_for_day','rut_pro_signals_for_day','rut_reports_for_day','rut_county_changes','rut_county_comparison']);
+async function rutFetch(input,options){
+ const url=new URL(input),epoch=testEpoch,privateView=testMode;
+ if(privateView&&testEndpoints.has(url.pathname.split('/').pop())){
+  if(!testAccess||!authToken)throw Error('Private test access unavailable');
+  url.pathname+='_test';options={...options,headers:{...options.headers,...headers(authToken)}};
+ }
+ const response=await fetch(url,options);
+ if(epoch!==testEpoch)throw Error('Report view changed');
+ if(privateView&&(response.status===401||response.status===403))$('testModeStatus').textContent='Private test access could not be verified. Sign in again or check your membership.';
+ return response;
+}
+$('testToggle').addEventListener('change',async e=>{
+ if(!testAccess){e.target.checked=false;return}
+ const enabled=e.target.checked;
+ sessionStorage.setItem('rut_iq_test_public_'+authUser.id,enabled?'0':'1');
+ setTestState(true,enabled);
+ await Promise.all([loadReports(),loadDailyReport(),fetchMapReportData().then(()=>{if(map)recolorMap()}).catch(()=>{})]);
+});
+
 initAuth().then(()=>{routeFromURL();loadReports()}).catch(()=>{show('signup',false);$('authMessage').textContent='We couldn’t check your sign-in. Please try again.'}).finally(()=>document.body.classList.remove('booting'));
