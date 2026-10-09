@@ -8,7 +8,7 @@
 <div class="statline"><div class="stat"><small>Real hunter reports in county</small><strong id="total">0</strong><small>Submitted observations</small></div><div class="stat"><small>Latest report</small><strong id="last">—</strong><small>Community reports</small></div></div>
 <div class="section row"><h2>Rut activity right now</h2><span class="muted">From community reports</span></div><div class="card"><div id="activityEmpty" class="empty">No hunter reports in this county yet.<p>Be the first to report activity from this county.</p></div><div id="activityChart" style="display:none"><div class="chart" id="bars"></div><p class="muted">Counts by reported behavior. These are observations, not rut predictions.</p></div><button class="action cta" onclick="show('submit')">Log a rut observation</button></div>
 <div class="section"><h2>Historical rut timing</h2></div><div class="card"><div class="eyebrow">REGIONAL CONTEXT</div><h3>Historical reference</h3><p class="muted">County-specific historical rut estimates have not been verified for this preview. We'll add sourced regional references separately from live hunter reports.</p><div class="note">Historical timing is not a guarantee of when deer will rut this season.</div></div></section>
-<section id="heatmap" class="view"><div class="section row"><h2>Rut Activity Heat Map</h2><span class="pill">LIVE REPORT VOLUME</span></div><p class="muted" id="mapRegion">Pan and zoom anywhere in the United States. Tap any county to see its reports.</p><div class="row" style="margin:10px 0"><select id="mapStateSelect" aria-label="Jump to state" style="margin:0;flex:1"></select><button class="ghost" type="button" onclick="resetNationMap()">🇺🇸 All US</button></div><div class="card" style="padding:9px"><div class="row" style="gap:7px;margin:5px 5px 10px"><button class="ghost" style="flex:1" id="satelliteBtn" type="button" onclick="switchMapBase('satellite')">🛰 Satellite</button><button class="ghost" style="flex:1" id="topoBtn" type="button" onclick="switchMapBase('topo')">⛰ Topo</button><button class="ghost" style="flex:1" id="streetBtn" type="button" onclick="switchMapBase('street')">▤ Streets</button></div><div id="countyMap" role="application" aria-label="County report activity map"></div><div class="map-legend"><span class="key"><span class="swatch" style="background:#4b4a43"></span>No reports</span><span class="key"><span class="swatch" style="background:#857151"></span>1–2</span><span class="key"><span class="swatch" style="background:#bf8b49"></span>3–7</span><span class="key"><span class="swatch" style="background:#e2a348"></span>8+ reports</span></div><p class="muted">Colors show the number of real approved hunter reports in the last 7 days—not rut intensity. No reports does not mean deer aren't active.</p><p class="muted" id="mapStatus">Loading state and county boundaries...</p></div><div class="note">Tap a county to see its report count and open local observations. We never show exact hunting locations.</div></section>
+<section id="heatmap" class="view"><div class="section row"><h2>Rut Activity Heat Map</h2><span class="pill">LIVE REPORT VOLUME</span></div><p class="muted" id="mapRegion">Pan and zoom anywhere in the United States. Tap any county to see its reports.</p><form id="mapAddressForm" autocomplete="off" style="margin:14px 0 8px"><label for="mapAddressInput" style="display:block;font-weight:700;margin:0 0 7px;color:#f3d9b0">Find a hunting area</label><div class="row" style="gap:8px;align-items:stretch"><input id="mapAddressInput" name="address" type="search" maxlength="180" enterkeyhint="search" placeholder="Address, city, or ZIP code" aria-label="Search U.S. address, city, or ZIP" style="margin:0;min-width:0;flex:1"><button id="mapAddressSearchButton" class="action" type="submit" style="flex-shrink:0;padding:10px 13px">Search</button></div><p id="mapAddressStatus" role="status" aria-live="polite" class="muted" style="margin:7px 0 0">Search is private to your map. Your address isn't shared with other hunters. Lookup uses an external map service.</p></form><div class="row" style="margin:10px 0"><select id="mapStateSelect" aria-label="Jump to state" style="margin:0;flex:1"></select><button class="ghost" type="button" onclick="resetNationMap()">🇺🇸 All US</button></div><div class="card" style="padding:9px"><div class="row" style="gap:7px;margin:5px 5px 10px"><button class="ghost" style="flex:1" id="satelliteBtn" type="button" onclick="switchMapBase('satellite')">🛰 Satellite</button><button class="ghost" style="flex:1" id="topoBtn" type="button" onclick="switchMapBase('topo')">⛰ Topo</button><button class="ghost" style="flex:1" id="streetBtn" type="button" onclick="switchMapBase('street')">▤ Streets</button></div><div id="countyMap" role="application" aria-label="County report activity map"></div><div class="map-legend"><span class="key"><span class="swatch" style="background:#4b4a43"></span>No reports</span><span class="key"><span class="swatch" style="background:#857151"></span>1–2</span><span class="key"><span class="swatch" style="background:#bf8b49"></span>3–7</span><span class="key"><span class="swatch" style="background:#e2a348"></span>8+ reports</span></div><p class="muted">Colors show the number of real approved hunter reports in the last 7 days—not rut intensity. No reports does not mean deer aren't active.</p><p class="muted" id="mapStatus">Loading state and county boundaries...</p></div><div class="note">Tap a county to see its report count and open local observations. We never show exact hunting locations.</div></section>
 <section id="reports" class="view"><div class="section row"><h2>Local hunter reports</h2><button class="ghost" onclick="show('submit')">+ Add</button></div><p class="muted" id="regionLabel"></p><div class="card"><div class="eyebrow">COMMUNITY SIGHTINGS</div><div id="feed" class="empty">No hunter reports yet for this county.</div></div><div class="note">Submitted observations are shared as county-level activity. Names, contact details, and notes are not displayed publicly.</div></section>
 <section id="submit" class="view"><div class="section"><h2>Report rut activity</h2></div><div class="card"><div class="eyebrow">HUNTER SIGN-IN</div><p class="muted" id="authStatus">Checking sign-in...</p><label>Your email<input type="email" id="authEmail" placeholder="you@example.com" autocomplete="email"></label><button class="ghost cta" id="signInButton" type="button">Send Secure Sign-In Link</button><p class="muted" id="authMessage"></p></div><p class="muted">Help other hunters see how deer are behaving across your county. Don't include stand or property locations.</p><form class="card" id="reportForm"><label>County<select id="reportCounty"></select></label><label>What did you observe?<select id="behavior" required><option value="">Choose a behavior</option><option>Cruising</option><option>Chasing</option><option>Tending a doe</option><option>Breeding observed</option><option>Scrape / rub activity</option><option>No rut activity observed</option></select></label><label>Observation date<input id="date" type="date" required></label><label>Notes (optional)<textarea id="notes" rows="3" maxlength="300" placeholder="What did you see? Avoid exact locations."></textarea></label><div class="note">Only your selected county and observed behavior appear publicly. You must sign in to submit; never include exact hunting locations.</div><p id="message" class="muted"></p><button class="action cta" type="submit">Submit Hunter Report</button></form></section>
 <section id="about" class="view"><div class="section"><h2>About Rut IQ</h2></div><div class="card"><div class="eyebrow">BY GHOST RIDGE</div><h3>Built for hunters, by hunters.</h3><p class="muted">Rut IQ is being developed as a place for real hunters to report rut behavior and see regional trends built from genuine field observations.</p><div class="divider"></div><div class="note">LIVE COMMUNITY REPORTS — Hunter-submitted activity is live. Historical county rut calendars still require verified data.</div></div></section></main>
@@ -111,7 +111,56 @@ async function initMapData(){
  const rows=await resp.json();
  allMapCounts=Object.fromEntries(rows.map(r=>[r.state+'|'+r.county,Number(r.reports_7d)||0]));
 }
-function resetNationMap(){if(!map)return;map.setView([39,-97],4);$('mapStateSelect').value=''}
+function resetNationMap(){if(!map)return;map.setView([39,-97],4);$('mapStateSelect').value='';if(searchMarker){map.removeLayer(searchMarker);searchMarker=null}setSearchStatus('Showing the United States. Search for a city, ZIP, or address to zoom in.')}
+let searchMarker=null;
+let mapSearchInProgress=false;
+function setSearchStatus(message){$('mapAddressStatus').textContent=message}
+function setSearchLoading(isLoading){
+ mapSearchInProgress=isLoading;
+ const button=$('mapAddressSearchButton');
+ button.disabled=isLoading;
+ button.textContent=isLoading?'Finding...':'Search';
+}
+async function geocodeUnitedStates(query){
+ const controller=new AbortController(),timeout=setTimeout(()=>controller.abort(),12000);
+ try{
+  const url=new URL('https://nominatim.openstreetmap.org/search');
+  url.searchParams.set('format','jsonv2');
+  url.searchParams.set('countrycodes','us');
+  url.searchParams.set('limit','1');
+  url.searchParams.set('addressdetails','1');
+  url.searchParams.set('q',query);
+  const response=await fetch(url,{signal:controller.signal,headers:{'Accept':'application/json'}});
+  if(!response.ok)throw Error('The address search service is unavailable. Try again.');
+  const items=await response.json();
+  if(!Array.isArray(items)||!items.length)throw Error('No U.S. location found. Include the city and state, or try a ZIP code.');
+  const result=items[0],lat=Number(result.lat),lon=Number(result.lon);
+  if(!Number.isFinite(lat)||!Number.isFinite(lon))throw Error('This location could not be mapped.');
+  return {lat,lon,label:result.display_name||query,type:result.addresstype||result.type||'',bbox:result.boundingbox};
+ }finally{clearTimeout(timeout)}
+}
+$('mapAddressForm').addEventListener('submit',async event=>{
+ event.preventDefault();
+ if(mapSearchInProgress)return;
+ const query=$('mapAddressInput').value.trim();
+ if(query.length<3){setSearchStatus('Enter at least three characters to search.');return}
+ if(!map){setSearchStatus('Open the map first and try again.');return}
+ setSearchLoading(true);setSearchStatus('Finding location...');
+ try{
+  const location=await geocodeUnitedStates(query);
+  if(searchMarker){map.removeLayer(searchMarker);searchMarker=null}
+  const isStreet=['house','building','amenity','residential','road','street'].includes(location.type);
+  const isZip=['postcode','postal_code'].includes(location.type);
+  const zoom=isStreet?14:isZip?11:10;
+  map.setView([location.lat,location.lon],zoom,{animate:true});
+  searchMarker=L.circleMarker([location.lat,location.lon],{radius:7,color:'#fff1d7',weight:2,fillColor:'#d3ad78',fillOpacity:.95}).addTo(map);
+  searchMarker.bindTooltip('Your private search location',{direction:'top'});
+  $('mapStateSelect').value='';
+  setSearchStatus('Showing '+location.label+'. The marker is only visible to you in this session.');
+ }catch(error){setSearchStatus(error.name==='AbortError'?'Address search timed out. Please try again.':error.message||'Search failed. Try again.')}
+ finally{setSearchLoading(false)}
+});
+
 function isVisibleState(box,viewport){return box[0]<=viewport.getEast()&&box[2]>=viewport.getWest()&&box[1]<=viewport.getNorth()&&box[3]>=viewport.getSouth()}
 async function updateVisibleCounties(){
  if(!map||!stateBounds)return;
