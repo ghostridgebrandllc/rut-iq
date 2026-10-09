@@ -27,9 +27,10 @@ const regionsReady=fetch('./regions.json').then(r=>{if(!r.ok)throw Error('Region
 const routes=new Set(['welcome','home','heatmap','reports','submit','signup','plans','about','help','privacy','terms','account']);
 function defaultRoute(){return authUser||localStorage.getItem('rut_iq_welcomed')==='1'?'home':'welcome'}
 function enterAccount(mode){
+ setAuthMode(mode==='create'?'create':'signin');
  localStorage.setItem('rut_iq_welcomed','1');
  $('signupTitle').textContent=mode==='create'?'Create your free account':'Welcome back';
- $('signupLead').textContent=mode==='create'?'Join the hunters building a clearer picture of the rut.':'Sign in with a secure link sent to your email.';
+ $('signupLead').textContent=mode==='create'?'Join the hunters building a clearer picture of the rut.':'Sign in with your email and password, or use a secure email link.';
  show('signup');$('authEmail').focus({preventScroll:true});
 }
 $('welcomeCreate').addEventListener('click',()=>enterAccount('create'));
@@ -168,26 +169,35 @@ async function refreshMembership(){
  if($('mapColorMode')){if(!proAccess){mapColorMode='volume';mapDays=7;$('mapColorMode').value='volume';$('mapTimeWindow').value='7'}}
  ++mapDataRequest;allMapCounts={};reportDataFetchedAt=0;if(map){recolorMap();await fetchMapReportData().then(recolorMap).catch(()=>{})}
 }
-let session=null,refreshInFlight=null,authRetryUntil=0,authRetryTimer=null;
+let session=null,refreshInFlight=null,authRetryUntil=0,authRetryTimer=null,rememberSession=true,authMode='signin',authBusy=false,authGeneration=0;
 function pauseEmailResend(seconds){
  authRetryUntil=Date.now()+seconds*1000;clearInterval(authRetryTimer);updateSignInButton();
  authRetryTimer=setInterval(()=>{if(Date.now()>=authRetryUntil){clearInterval(authRetryTimer);authRetryTimer=null}updateSignInButton()},1000);
 }
 function saveSession(value){
  session=value;authToken=value?.access_token||null;
- if(value)localStorage.setItem('rut_iq_session',JSON.stringify(value));else localStorage.removeItem('rut_iq_session');
+ if(value){
+  if(!value.expires_at&&value.expires_in)value.expires_at=Math.floor(Date.now()/1000)+Number(value.expires_in);
+  const target=rememberSession?localStorage:sessionStorage,other=rememberSession?sessionStorage:localStorage;
+  other.removeItem('rut_iq_session');target.setItem('rut_iq_session',JSON.stringify(value));
+ }else{++authGeneration;localStorage.removeItem('rut_iq_session');sessionStorage.removeItem('rut_iq_session')}
+
  localStorage.removeItem('rut_iq_access_token');
  clearTimeout(refreshTimer);
  if(value?.refresh_token){refreshTimer=setTimeout(()=>refreshSession().catch(()=>{}),Math.max(1000,(Number(value.expires_at)*1000-Date.now())-60000))}
 }
 function updateSignInButton(){
  const wait=Math.max(0,Math.ceil((authRetryUntil-Date.now())/1000));
- $('signInButton').textContent=authUser?'Signed in':wait?'Resend available in '+wait+'s':'Send Secure Sign-In Link';$('signInButton').disabled=!!authUser||wait>0;
+ $('signInButton').textContent=authUser?'Signed in':wait?'Resend available in '+wait+'s':'Email me a sign-in link instead';$('signInButton').disabled=!!authUser||wait>0||authBusy;
+ $('forgotPassword').disabled=!!authUser||wait>0||authBusy;
+ $('passwordSignIn').disabled=!!authUser||authBusy||(authMode==='create'&&wait>0);
+ $('authCreateTab').disabled=authBusy;$('authSignInTab').disabled=authBusy;
 }
 function updateAuthUI(){
- if(!authUser){++testAccessRequest;setTestState(false,false)}
+ if(!authUser){++testAccessRequest;setTestState(false,false);$('authPassword').value='';$('newPassword').value='';$('confirmPassword').value=''}
  $('mapGuestActions').hidden=!!authUser;$('heatmap').classList.toggle('guest-map',!authUser);
  updateAccountUI();
+ $('signedOutAuth').hidden=!!authUser;$('signedInManage').hidden=!authUser;
  $('authStatus').textContent=authUser?'Signed in as '+authUser.email:'Sign in securely to contribute reports';
  updateSignInButton();
  $('signOutButton').hidden=!authUser;$('authEmail').hidden=!!authUser;
@@ -195,18 +205,24 @@ function updateAuthUI(){
 async function refreshSession(){
  if(refreshInFlight)return refreshInFlight;
  if(!session?.refresh_token)return false;
+ const generation=authGeneration;
  refreshInFlight=(async()=>{
   try{
    const r=await fetch(api+'/auth/v1/token?grant_type=refresh_token',{method:'POST',headers:headers(),body:JSON.stringify({refresh_token:session.refresh_token})});
+   if(generation!==authGeneration)return false;
    if(!r.ok){if(r.status===400||r.status===401){saveSession(null);authUser=null;updateAuthUI();await refreshMembership();await loadReports()}throw Error('Please sign in again to continue.');}
-   const next=await r.json();saveSession(next);authUser=next.user;updateAuthUI();return true;
+   const next=await r.json();if(generation!==authGeneration)return false;saveSession(next);authUser=next.user;updateAuthUI();return true;
   }catch(e){clearTimeout(refreshTimer);if(session?.refresh_token)refreshTimer=setTimeout(()=>refreshSession().catch(()=>{}),30000);throw e}
  })().finally(()=>{refreshInFlight=null});return refreshInFlight;
 }
 async function initAuth(){
  const params=new URLSearchParams(location.hash.slice(1));
  if(params.has('error_description'))$('authMessage').textContent='This sign-in link has expired or was already used. Request a fresh link.';
- try{session=JSON.parse(localStorage.getItem('rut_iq_session')||'null')}catch(e){session=null}
+ try{
+  const tabSession=sessionStorage.getItem('rut_iq_session'),savedSession=localStorage.getItem('rut_iq_session');
+  session=JSON.parse(tabSession||savedSession||'null');rememberSession=tabSession?false:savedSession?true:localStorage.getItem('rut_iq_remember')!=='0';
+ }catch(e){session=null}
+ $('rememberMe').checked=rememberSession;
  if(params.get('access_token')){saveSession({access_token:params.get('access_token'),refresh_token:params.get('refresh_token'),expires_at:Number(params.get('expires_at'))||Math.floor(Date.now()/1000)+Number(params.get('expires_in')||3600)})}
  else if(session)saveSession(session);
  else authToken=localStorage.getItem('rut_iq_access_token');
@@ -218,18 +234,19 @@ async function initAuth(){
  }catch(e){$('authMessage').textContent='Unable to verify your session. Check your connection and refresh.'}}
  updateAuthUI();await refreshMembership();
  if(params.has('error'))show('signup');
- if(authUser){localStorage.setItem('rut_iq_welcomed','1');if(params.get('access_token')){$('authMessage').textContent='You’re signed in. Your hunter account is ready.';show('home')}}
+ if(authUser){localStorage.setItem('rut_iq_welcomed','1');if(params.get('access_token')){$('authMessage').textContent='You’re signed in. Your hunter account is ready.';show(params.get('type')==='recovery'?'account':'home');if(params.get('type')==='recovery'){$('passwordMessage').textContent='Choose your new password below.';$('newPassword').focus()}}}
 }
 $('signOutButton').addEventListener('click',async()=>{
- const token=authToken;saveSession(null);authUser=null;updateAuthUI();await refreshMembership();await loadReports();
+ const token=authToken;saveSession(null);localStorage.setItem('rut_iq_signout',String(Date.now()));authUser=null;updateAuthUI();await refreshMembership();await loadReports();
  if(token)fetch(api+'/auth/v1/logout',{method:'POST',headers:headers(token)}).catch(()=>{});
  $('authMessage').textContent='Signed out.';show('signup');
 });
 $('signInButton').addEventListener('click',async()=>{
- if(authUser||Date.now()<authRetryUntil)return;
+ if(authUser||authBusy||Date.now()<authRetryUntil)return;
  const email=$('authEmail').value.trim(),msg=$('authMessage');msg.textContent='';
  if(!email||!$('authEmail').checkValidity()){msg.textContent='Enter a valid email address.';return}
- $('signInButton').disabled=true;
+ rememberSession=$('rememberMe').checked;localStorage.setItem('rut_iq_remember',rememberSession?'1':'0');
+ authBusy=true;updateSignInButton();
  const controller=new AbortController(),timeout=setTimeout(()=>controller.abort(),20000);
  try{
   const redirect='https://rut-iq-preview.onrender.com/';
@@ -244,14 +261,17 @@ $('signInButton').addEventListener('click',async()=>{
   }
   pauseEmailResend(60);
   msg.textContent='Check your email for the secure Rut IQ sign-in link. Check your spam folder too.';
- }catch(e){msg.textContent=e.name==='AbortError'?'The email request timed out. Check your inbox before requesting another link.':e instanceof TypeError?'Unable to connect. Check your connection and try again.':e.message}finally{clearTimeout(timeout);updateAuthUI()}
+ }catch(e){msg.textContent=e.name==='AbortError'?'The email request timed out. Check your inbox before requesting another link.':e instanceof TypeError?'Unable to connect. Check your connection and try again.':e.message}finally{clearTimeout(timeout);authBusy=false;updateAuthUI()}
 });
 window.addEventListener('hashchange',()=>{if(location.hash.includes('access_token=')||location.hash.includes('error='))initAuth().then(loadReports);else routeFromURL()});
-window.addEventListener('storage',event=>{if(event.key==='rut_iq_session')location.reload()});
+window.addEventListener('storage',event=>{
+ if(event.key==='rut_iq_signout'){saveSession(null);authUser=null;updateAuthUI();refreshMembership().then(loadReports);return}
+ if(event.key==='rut_iq_session'&&!sessionStorage.getItem('rut_iq_session'))location.reload();
+});
 document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible'&&authUser){(async()=>{if(session?.refresh_token)await refreshSession();await refreshMembership();await loadReports();await loadDailyReport()})().catch(()=>{})}});
 $('reportForm').addEventListener('submit',async e=>{
  e.preventDefault();const msg=$('message');msg.textContent='';
- if(!authUser||!authToken){msg.textContent='Please sign in using your email link before submitting.';show('signup');return}
+ if(!authUser||!authToken){msg.textContent='Please sign in before submitting.';show('signup');return}
  const behavior=$('behavior').value,date=$('date').value,notes=$('notes').value.trim(),submittedState=selectedState,submittedCounty=region;
  if(!(regions[selectedState]||[]).some(c=>c.name===region)){msg.textContent='Choose a state and county before submitting.';return}
  if(!behavior||!date)return;
@@ -512,6 +532,7 @@ document.addEventListener('click',event=>{const button=event.target.closest('but
 function updateAccountUI(){
  $('accountStatus').textContent=authUser?'Signed in as '+authUser.email:'Sign in to manage your Rut IQ account.';
  $('accountSignIn').hidden=!!authUser;$('accountControls').hidden=!authUser;
+ $('accountRemember').checked=rememberSession;
  $('deleteAccountPanel').hidden=true;$('deleteConfirmation').value='';$('confirmDeleteAccount').disabled=true;
 }
 $('openDeleteAccount').addEventListener('click',()=>{if(!authUser){show('signup');return}$('deleteAccountMessage').textContent='';$('deleteAccountPanel').hidden=false;$('deleteConfirmation').focus()});
@@ -730,6 +751,103 @@ $('testToggle').addEventListener('change',async e=>{
  sessionStorage.setItem('rut_iq_test_public_'+authUser.id,enabled?'0':'1');
  setTestState(true,enabled);
  await Promise.all([loadReports(),loadDailyReport(),fetchMapReportData().then(()=>{if(map)recolorMap()}).catch(()=>{})]);
+});
+
+/* Passwords go directly to Auth over HTTPS and are never stored by Rut IQ. */
+function setAuthMode(mode){
+ authMode=mode;
+ $('authSignInTab').setAttribute('aria-pressed',String(mode==='signin'));
+ $('authCreateTab').setAttribute('aria-pressed',String(mode==='create'));
+ $('passwordSignIn').textContent=mode==='create'?'Create free account':'Sign in';
+ $('authPassword').autocomplete=mode==='create'?'new-password':'current-password';
+ $('authPassword').minLength=mode==='create'?12:1;
+ $('passwordHint').textContent=mode==='create'?'Use at least 12 characters. We’ll email you a confirmation link.':'Already used an email link? Choose “Set or reset password” below, or set one in My account while signed in.';
+ $('authPassword').value='';$('authMessage').textContent='';updateSignInButton();
+}
+$('authSignInTab').addEventListener('click',()=>setAuthMode('signin'));
+$('authCreateTab').addEventListener('click',()=>setAuthMode('create'));
+async function authRequest(path,body,token,method='POST'){
+ const controller=new AbortController(),timeout=setTimeout(()=>controller.abort(),20000);
+ try{
+  const response=await fetch(api+'/auth/v1/'+path,{method,headers:headers(token),body:JSON.stringify(body),signal:controller.signal});
+  const data=await response.json().catch(()=>({}));
+  if(!response.ok){
+   const code=data.error_code||data.code;
+   if(response.status===429){pauseEmailResend(60);throw Error('Too many requests. Please wait a minute and try again.')}
+   if(code==='email_not_confirmed')throw Error('Confirm your email first. You can request a fresh email sign-in link below.');
+   if(code==='invalid_credentials')throw Error('Email or password wasn’t recognized. Try again or choose “Set or reset password.”');
+   if(code==='weak_password')throw Error('Choose a stronger password with at least 12 characters.');
+   if(code==='same_password')throw Error('Choose a different password from your current one.');
+   if(code==='reauthentication_needed'||code==='reauthentication_not_valid')throw Error('Please use a fresh password reset email before changing your password.');
+   if(response.status===401||response.status===403)throw Error('Your sign-in could not be verified. Sign in again and retry.');
+   throw Error('We couldn’t complete that request. Try again, or use an email sign-in link.');
+  }
+  return data;
+ }catch(e){
+  if(e.name==='AbortError')throw Error('The request timed out. Check your connection before trying again.');
+  if(e instanceof TypeError)throw Error('Unable to connect. Check your connection and try again.');
+  throw e;
+ }finally{clearTimeout(timeout)}
+}
+$('passwordAuthForm').addEventListener('submit',async e=>{
+ e.preventDefault();if(authUser||authBusy)return;
+ if(!$('passwordAuthForm').reportValidity())return;
+ const mode=authMode,email=$('authEmail').value.trim(),password=$('authPassword').value,generation=authGeneration;
+ if(mode==='create'&&Date.now()<authRetryUntil)return;
+ rememberSession=$('rememberMe').checked;localStorage.setItem('rut_iq_remember',rememberSession?'1':'0');
+ authBusy=true;updateSignInButton();$('authMessage').textContent=mode==='create'?'Creating your account…':'Signing in…';
+ try{
+  const path=mode==='create'?'signup?redirect_to='+encodeURIComponent('https://rut-iq-preview.onrender.com/'):'token?grant_type=password';
+  const data=await authRequest(path,{email,password});
+  if(generation!==authGeneration)return;
+  $('authPassword').value='';
+  if(data.access_token){
+   saveSession(data);authUser=data.user;
+   if(!authUser){const r=await fetch(api+'/auth/v1/user',{headers:headers(authToken)});if(!r.ok)throw Error('Please sign in again.');authUser=await r.json()}
+   localStorage.setItem('rut_iq_welcomed','1');updateAuthUI();await refreshMembership();show('home');await loadReports();
+   $('authMessage').textContent='You’re signed in.';
+  }else{
+   pauseEmailResend(60);
+   $('authMessage').textContent='Check your email to confirm your Rut IQ account. Already registered? Sign in or reset your password.';
+  }
+ }catch(e){$('authMessage').textContent=e.message}
+ finally{authBusy=false;updateSignInButton()}
+});
+$('forgotPassword').addEventListener('click',async()=>{
+ if(authUser||authBusy||Date.now()<authRetryUntil)return;
+ if(!$('authEmail').value.trim()||!$('authEmail').reportValidity())return;
+ rememberSession=$('rememberMe').checked;localStorage.setItem('rut_iq_remember',rememberSession?'1':'0');
+ authBusy=true;updateSignInButton();$('authMessage').textContent='Requesting a password reset…';
+ try{
+  await authRequest('recover?redirect_to='+encodeURIComponent('https://rut-iq-preview.onrender.com/'),{email:$('authEmail').value.trim()});
+  pauseEmailResend(60);$('authMessage').textContent='If an account exists for that email, you’ll receive a link to set a new password. Open the newest email on this device.';
+ }catch(e){$('authMessage').textContent=e.message}
+ finally{authBusy=false;updateSignInButton()}
+});
+$('setPasswordForm').addEventListener('submit',async e=>{
+ e.preventDefault();const button=$('savePassword'),msg=$('passwordMessage');
+ if(button.disabled)return;
+ if(!authUser||!authToken){show('signup');return}
+ if(!$('setPasswordForm').reportValidity())return;
+ if($('newPassword').value!==$('confirmPassword').value){msg.textContent='The passwords don’t match. Please enter the same password twice.';return}
+ const generation=authGeneration,password=$('newPassword').value,remember=$('accountRemember').checked;
+ button.disabled=true;msg.textContent='Saving your password…';
+ try{
+  if(session?.refresh_token&&Number(session.expires_at)*1000<Date.now()+60000)await refreshSession();
+  if(generation!==authGeneration||!authToken)throw Error('Please sign in again before changing your password.');
+  await authRequest('user',{password},authToken,'PUT');
+  if(generation!==authGeneration)return;
+  rememberSession=remember;localStorage.setItem('rut_iq_remember',rememberSession?'1':'0');
+  if(session)saveSession(session);
+  $('setPasswordForm').reset();$('accountRemember').checked=rememberSession;
+  msg.textContent='Password saved. You can now sign in with your email and password.';
+ }catch(e){msg.textContent=e.message}
+ finally{button.disabled=false}
+});
+$('saveRemember').addEventListener('click',()=>{
+ if(!authUser||!session)return;
+ rememberSession=$('accountRemember').checked;localStorage.setItem('rut_iq_remember',rememberSession?'1':'0');saveSession(session);
+ $('passwordMessage').textContent=rememberSession?'Remember me is on for this browser.':'Remember me is off. This sign-in uses tab-session storage. Sign out when finished on a shared device.';
 });
 
 initAuth().then(()=>{routeFromURL();loadReports()}).catch(()=>{show('signup',false);$('authMessage').textContent='We couldn’t check your sign-in. Please try again.'}).finally(()=>document.body.classList.remove('booting'));
