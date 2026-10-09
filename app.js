@@ -22,10 +22,11 @@ function setSelectors(){
  $('county').innerHTML=opts;$('reportCounty').innerHTML=opts;$('county').disabled=!selectedState;$('reportCounty').disabled=!selectedState;updateRegionSummary();
 }
 fetch('./regions.json').then(r=>{if(!r.ok)throw Error('Regions unavailable');return r.json()}).then(data=>{regions=data;if(!regions[selectedState])selectedState='';setSelectors();$('regionPicker').open=!hasRegion();render();loadReports();loadDailyReport()}).catch(e=>{ $('county').innerHTML='<option>Unable to load counties</option>'; $('reportCounty').innerHTML='<option>Unable to load counties</option>'; $('reportForm').querySelector('button[type=submit]').disabled=true; $('regionLabel').textContent='Refresh to load counties'; });
-const routes=new Set(['home','heatmap','reports','submit','signup','plans','about','help','privacy','terms']);
+const routes=new Set(['home','heatmap','reports','submit','signup','plans','about','help','privacy','terms','account']);
 function show(id,record=true){
  if(!routes.has(id))id='home';
  if(id==='submit'&&!authUser)id='signup';
+ if(id==='account')updateAccountUI();
  if(record&&location.hash!=='#'+id)history.pushState(null,'','#'+id);
  document.querySelectorAll('.view').forEach(x=>x.classList.toggle('show',x.id===id));
  document.querySelectorAll('.dock button').forEach(x=>{const active=x.dataset.tab===id;x.classList.toggle('active',active);if(active)x.setAttribute('aria-current','page');else x.removeAttribute('aria-current')});
@@ -143,6 +144,7 @@ function saveSession(value){
  if(value?.refresh_token){refreshTimer=setTimeout(()=>refreshSession().catch(()=>{}),Math.max(1000,(Number(value.expires_at)*1000-Date.now())-60000))}
 }
 function updateAuthUI(){
+ updateAccountUI();
  $('authStatus').textContent=authUser?'Signed in as '+authUser.email:'Sign in securely to contribute reports';
  $('signInButton').textContent=authUser?'Signed in':'Send Secure Sign-In Link';$('signInButton').disabled=!!authUser;
  $('signOutButton').hidden=!authUser;$('authEmail').hidden=!!authUser;
@@ -408,3 +410,37 @@ async function loadHeatmap(){
 initAuth().then(()=>{routeFromURL();loadReports()});
 
 document.addEventListener('click',event=>{const button=event.target.closest('button');if(!button)return;if(button.dataset.route)show(button.dataset.route);else if(button.dataset.base)switchMapBase(button.dataset.base);else if(button.dataset.action==='reset-map')resetNationMap();else if(button.dataset.action==='retry-daily')loadDailyReport()});
+
+function updateAccountUI(){
+ $('accountStatus').textContent=authUser?'Signed in as '+authUser.email:'Sign in to manage your Rut IQ account.';
+ $('accountSignIn').hidden=!!authUser;$('accountControls').hidden=!authUser;
+ $('deleteAccountPanel').hidden=true;$('deleteConfirmation').value='';$('confirmDeleteAccount').disabled=true;
+}
+$('openDeleteAccount').addEventListener('click',()=>{if(!authUser){show('signup');return}$('deleteAccountMessage').textContent='';$('deleteAccountPanel').hidden=false;$('deleteConfirmation').focus()});
+$('cancelDeleteAccount').addEventListener('click',()=>{updateAccountUI();$('deleteAccountMessage').textContent='Your account has been kept.'});
+$('deleteConfirmation').addEventListener('input',()=>{$('confirmDeleteAccount').disabled=$('deleteConfirmation').value!=='DELETE'});
+$('deleteAccountForm').addEventListener('submit',async event=>{
+ event.preventDefault();const message=$('deleteAccountMessage'),button=$('confirmDeleteAccount');
+ if(!authUser||!authToken){message.textContent='Please sign in before deleting your account.';return}
+ if($('deleteConfirmation').value!=='DELETE'||button.disabled)return;
+ button.disabled=true;$('cancelDeleteAccount').disabled=true;$('deleteConfirmation').disabled=true;button.textContent='Deleting…';message.textContent='';
+ try{
+  if(session?.refresh_token&&Number(session.expires_at)*1000<Date.now()+60000)await refreshSession();
+  const response=await fetch(api+'/rest/v1/rpc/rut_delete_my_account',{method:'POST',headers:headers(authToken),body:JSON.stringify({confirmation:'DELETE'})});
+  const result=await response.json().catch(()=>({}));
+  if(!response.ok||result.deleted!==true)throw Error(response.status===401||response.status===403?'Your sign-in has expired. Sign in again before deleting your account.':result.message||'We couldn’t confirm deletion. Please try again.');
+  saveSession(null);authUser=null;clearTimeout(membershipTimer);proAccess=false;membership={plan:'free',source:'free',status:'active'};
+  ++reportRequest;++dailyRequest;++mapDataRequest;reports=[];countyTotal=0;reportsReady=false;allMapCounts={};reportDataFetchedAt=0;
+  $('reportForm').reset();$('date').value=localDate();$('authEmail').value='';$('reportSuccess').hidden=true;
+  localStorage.removeItem('rut_iq_state');localStorage.removeItem('rut_iq_county');selectedState='';region='';setSelectors();$('regionPicker').open=true;
+  if(searchMarker){map.removeLayer(searchMarker);searchMarker=null}
+  $('mapAddressInput').value='';$('mapAddressStatus').textContent='Search a town or ZIP to find a hunting area.';
+  mapColorMode='volume';mapDays=7;$('mapColorMode').value='volume';$('mapTimeWindow').value='7';
+  if(map)recolorMap();updateAuthUI();updateMembershipUI();render();loadDailyReport();
+  message.textContent='Your Rut IQ account and reports have been deleted. You’re signed out. Your Woods IQ and store accounts were not changed.';
+  sessionStorage.setItem('rut_iq_deleted','1');location.reload();
+ }catch(error){message.textContent=error.message+' If the connection dropped, refresh to check your account status.'}
+ finally{button.textContent='Permanently delete';$('cancelDeleteAccount').disabled=false;$('deleteConfirmation').disabled=false;button.disabled=$('deleteConfirmation').value!=='DELETE'}
+});
+
+if(sessionStorage.getItem('rut_iq_deleted')){sessionStorage.removeItem('rut_iq_deleted');$('deleteAccountMessage').textContent='Your Rut IQ account and reports have been deleted. You’re signed out. Your Woods IQ and store accounts were not changed.';$('authMessage').textContent='Your Rut IQ account was deleted. Signing in again will create a new Free account.'}
