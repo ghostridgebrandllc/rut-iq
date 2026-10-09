@@ -16,3 +16,6 @@ Validation:
 - Security advisors: no new findings; existing private canonical-table RLS/no-policy info and disabled leaked-password-protection warning remain.
 
 Physical iPhone testing of this new private view remains a user check after deployment. No Woods IQ or social-app changes. Paid checkout remains disabled.
+
+## Live verification
+Release bed1035445460c67f75f5621bfacd1637788f5c7 deployed as dep-db4hrumi0phs73cbfag0 at 17:02:12 UTC. Served HTML and JavaScript matched the committed files. The private Test Mode browser suite passed against the live URL, including mode switching, stale responses, mobile controls, revoked access and logout. A real unauthenticated REST request to the private county-count endpoint returned HTTP 401. The existing owner test report remains hidden; no reports were published or added during verification.
