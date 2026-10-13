@@ -103,7 +103,7 @@ async function loadDailyReport(){
   if(request!==dailyRequest||st!==selectedState||county!==region)return;
   const r=data[0],total=Number(r?.reports_24h||0),hunters=Number(r?.hunters_24h||0);
   if(!total){
-   box.innerHTML='<div class="daily-stats"><div class="daily-stat"><strong>0</strong><span>Reports · 24 hours</span></div><div class="daily-stat"><strong>0</strong><span>Hunters reporting</span></div></div><p class="daily-empty">No fresh reports yet.</p><p class="daily-note">Be the first to share what you saw. An empty report does not mean deer are inactive.</p><p class="daily-meta">Includes reports sent in the last 24 hours for observations from today or yesterday. Dates follow your device’s local calendar.</p>';
+   box.innerHTML='<div class="daily-stats"><div class="daily-stat"><strong>0</strong><span>Reports · 24 hours</span></div><div class="daily-stat"><strong>0</strong><span>Hunters reporting</span></div></div><p class="daily-empty">No fresh reports yet.</p><p class="daily-note">Be the first to share what you saw. An empty report does not mean deer are inactive.</p><div class="daily-actions"><button class="action" data-route="submit" type="button">Report a sighting</button><button class="ghost" data-route="heatmap" type="button">Nearby map</button></div><p class="daily-meta">Includes reports sent in the last 24 hours for observations from today or yesterday. Dates follow your device’s local calendar.</p>';
    return;
   }
   const items=[['Cruising',r.cruising_24h],['Chasing',r.chasing_24h],['Tending',r.tending_24h],['Breeding',r.breeding_24h],['Scrapes / rubs',r.signs_24h],['No rut behavior seen',r.no_activity_24h]];
@@ -656,7 +656,7 @@ async function loadNearbyCounties(st,co,id){
   if(id!==changeRequest||st!==selectedState||co!==region)return;
   const totals=new Map(rows.map(x=>[countyKey(x.state,x.county),Number(x.reports_7d)]));
   const top=areas.map(c=>({...c,count:totals.get(countyKey(c.state,c.county))||0})).sort((a,b)=>b.count-a.count||a.county.localeCompare(b.county)).slice(0,6);
-  $('nearbyContent').innerHTML='<h4>Nearby county reports</h4><p class="muted">Past 7 local calendar days · '+(areas.length>6?'Showing 6 of '+areas.length+' nearby counties.':'Shared map boundaries.')+'</p>'+top.map(c=>'<button class="nearby-row" data-nearby-state="'+safe(c.state)+'" data-nearby-county="'+safe(c.county)+'"><span>'+safe(c.county)+'<small>'+safe(c.state)+'</small></span><b>'+c.count+' <span class="muted">→</span></b></button>').join('');
+  $('nearbyContent').innerHTML='<h4>Nearby county reports</h4>'+(top.every(c=>c.count===0)?'<p class="daily-note">No nearby counties have reports in this window. That does not mean the rut is inactive. You can submit an observation or check back as reports arrive.</p>':'')+'<p class="muted">Past 7 local calendar days · '+(areas.length>6?'Showing 6 of '+areas.length+' nearby counties.':'Shared map boundaries.')+'</p>'+top.map(c=>'<button class="nearby-row" data-nearby-state="'+safe(c.state)+'" data-nearby-county="'+safe(c.county)+'"><span>'+safe(c.county)+'<small>'+safe(c.state)+'</small></span><b>'+c.count+' <span class="muted">→</span></b></button>').join('');
  }catch{if(id===changeRequest)$('nearbyContent').innerHTML='<p class="muted">Nearby reports are temporarily unavailable.</p>'}
 }
 $('nearbyContent').addEventListener('click',e=>{const b=e.target.closest('[data-nearby-county]');if(b)selectCounty(b.dataset.nearbyState,b.dataset.nearbyCounty)});
