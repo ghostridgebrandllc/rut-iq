@@ -359,7 +359,7 @@ function updateMapLegend(){
  $('mapModeCaption').textContent=(signal?'Reported behavior':'Report volume')+' · '+mapDays+' days';
  const items=signal?[['#4b4a43','Insufficient evidence'],['#f3d343','Cruising / sign'],['#f28c28','Chasing'],['#d93630','Tending / breeding']]:[['#4b4a43','No reports'],['#f3d343','1–2 reports'],['#f28c28','3–7 reports'],['#d93630','8+ reports']];
  $('mapLegend').innerHTML=items.map(([color,label])=>'<span class="key"><span class="swatch" style="background:'+color+'"></span>'+label+'</span>').join('');
- $('mapExplanation').textContent=signal?'Behavior colors summarize hunter reports, not predictions. At least 5 reports from 3 hunters are required; gray means insufficient evidence, not no rut.':'Colors show number of approved hunter reports in the selected time window, not confirmed rut intensity.';
+ $('mapExplanation').textContent=signal?'Behavior colors summarize hunter reports, not predictions. At least 5 reports from 3 hunters are required; gray means insufficient evidence, not no rut.':'Colors represent submitted hunter reports, NOT confirmed rut intensity. Gray means no reports were submitted for that county in this period; it does not mean deer are inactive.';
 }
 async function fetchMapReportData(){
  const request=++mapDataRequest,access=proAccess,token=authToken,day=localDate(),rows=[];
@@ -379,7 +379,10 @@ async function fetchMapReportData(){
 function recolorMap(){
  updateMapLegend();if(activeMapCounty)renderCountySheet();
  for(const layer of Object.values(mapLayers)){layer.eachLayer(f=>{if(f.feature){f.setStyle(countyStyle(f.feature));if(f.isPopupOpen())f.closePopup()}})}
- $('mapStatus').textContent='Map covers all 50 states. '+(mapColorMode==='signal'?'Behavior colors require 5 reports from 3 hunters.':'Colors show real report totals.')+' Window: '+mapDays+' days. Dates follow your device’s local calendar.';
+ const reported=Object.values(allMapCounts).reduce((sum,row)=>sum+mapReportCount(row),0);
+ $('mapStatus').textContent=reported===0
+  ?'No hunter reports in the selected '+mapDays+'-day window. Gray counties mean no reports, not no rut. Explore any county or submit a real observation.'
+  :'Map covers all 50 states. '+reported+' hunter reports in the selected '+mapDays+'-day window. '+(mapColorMode==='signal'?'Behavior colors require 5 reports from 3 hunters.':'Colors show report counts, not confirmed rut intensity.')+' Dates follow your device’s local calendar.';
 }
 $('mapColorMode').addEventListener('change',e=>{if(e.target.value==='signal'&&!proAccess){e.target.value='volume';show('plans');return}mapColorMode=e.target.value;recolorMap()});
 $('mapTimeWindow').addEventListener('change',e=>{if(e.target.value==='30'&&!proAccess){e.target.value='7';show('plans');return}mapDays=Number(e.target.value);recolorMap()});
