@@ -142,13 +142,32 @@ async function loadReports(){
   reports=(access?data:[]).map(r=>({county:r.county,state:r.state,behavior:r.behavior,date:r.observed_on,saved:Date.parse(r.created_at)}));render();
  }catch(e){if(request===reportRequest){$('activityEmpty').textContent='Community reports are temporarily unavailable. Please try again.';$('feed').textContent='Reports unavailable. Please try again.'}}
 }
+document.addEventListener('click',async e=>{
+ const button=e.target.closest('[data-test-checkout]');
+ if(!button)return;
+ const status=$('rutCheckoutStatus'),plan=button.dataset.testCheckout;
+ if(!['monthly','annual'].includes(plan))return;
+ if(!authUser||!authToken){status.textContent='Sign in to Rut IQ before testing checkout.';show('signup');return}
+ if(proAccess){status.textContent='Pro is already active on this account. No new subscription is needed.';return}
+ button.disabled=true;status.textContent='Preparing Stripe sandbox checkout…';
+ try{
+  const res=await fetch(api+'/functions/v1/rut-iq-checkout-test',{
+   method:'POST',headers:headers(authToken),body:JSON.stringify({plan})
+  });
+  const data=await res.json().catch(()=>({}));
+  if(!res.ok||!data.checkout_url||!data.checkout_url.startsWith('https://checkout.stripe.com/'))
+   throw Error(data.error||'Test checkout is not ready. No payment was taken.');
+  location.assign(data.checkout_url);
+ }catch(err){status.textContent=err.message||'Could not start test checkout.'}
+ finally{button.disabled=false}
+});
 let membership={plan:'free',source:'free',status:'active'},proAccess=false,membershipTimer=null;
 function updateMembershipUI(){
  const label=proAccess?'Rut IQ Pro':'Rut IQ Free';
  const status=authUser?(proAccess?(membership.source==='tester'?'Pro tester':'Active Pro'):'Free member'):'Guest';
  for(const id of ['planCurrent','morePlan']){if($(id))$(id).textContent=label}
  for(const id of ['planStatus','moreStatus']){if($(id))$(id).textContent=status}
- if($('planMessage'))$('planMessage').textContent=proAccess?'Pro access is active. Thank you for helping build Rut IQ.':authUser?'Your Free account is active. Pro checkout is not enabled yet; no payments can be taken.':'Sign in to contribute reports. Pro checkout is not enabled yet.';
+ if($('planMessage'))$('planMessage').textContent=proAccess?'Pro access is active. Thank you for helping build Rut IQ.':authUser?'Your Free account is active. Sandbox checkout testing is available in the private beta only.':'Sign in to contribute reports. Pro checkout is not enabled yet.';
 }
 async function refreshMembership(){
  await refreshTestAccess();
