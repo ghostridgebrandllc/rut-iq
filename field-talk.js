@@ -106,25 +106,42 @@ async function loadFieldModeration(){
   const a=(await posts.json()).map(p=>({...p,kind:'posts',content:p.caption}));
   const b=(await comments.json()).map(c=>({...c,kind:'comments',content:c.body}));
   const c=(await photos.json()).map(p=>({...p,kind:'photos',content:'Photo attachment pending manual review'}));
-  const d=(await flags.json()).map(f=>({...f,kind:'flags',content:'Reported content: '+f.reason+' · '+(f.post_id?'post':'reply')}));
+  const d=(await flags.json()).map(f=>({...f,kind:'flags',content:'Reported '+(f.post_id?'post':'reply')+' · Reason: '+f.reason}));
   const pending=[...a,...b,...c,...d];
   queue.innerHTML=pending.length?pending.map(item=>
-   '<div class="card" data-mod-id="'+fieldText(item.id)+'" data-mod-kind="'+item.kind+'"><p class="eyebrow">'+item.kind+'</p><p style="white-space:pre-wrap;overflow-wrap:anywhere">'+fieldText(item.content)+'</p>'+
+   '<div class="card" data-mod-id="'+fieldText(item.id)+'" data-mod-kind="'+item.kind+'"'+(item.kind==='flags'?' data-target-post="'+fieldText(item.post_id||'')+'" data-target-comment="'+fieldText(item.comment_id||'')+'"':'')+'><p class="eyebrow">'+item.kind+'</p><p style="white-space:pre-wrap;overflow-wrap:anywhere">'+fieldText(item.content)+'</p>'+
    (item.kind==='photos'?'<div data-review-photo="'+fieldText(item.storage_path)+'"></div>':'')+
-   (item.kind==='flags'?'<button type="button" class="ghost" data-mod-status="reviewed">Mark reviewed</button>':'<button type="button" class="ghost" data-mod-status="approved">Approve</button> <button type="button" class="danger" data-mod-status="rejected">Reject</button>')+'</div>').join(''):'<p class="muted">No pending posts, replies or photos.</p>';
+   (item.kind==='flags'?'<div data-flag-context>Reviewing reported content…</div><button type="button" class="danger" data-mod-status="content_hidden">Hide reported content</button> <button type="button" class="ghost" data-mod-status="dismissed">Dismiss report</button>':'<button type="button" class="ghost" data-mod-status="approved">Approve</button> <button type="button" class="danger" data-mod-status="rejected">Reject</button>')+'</div>').join(''):'<p class="muted">No pending posts, replies or photos.</p>';
   for(const el of queue.querySelectorAll('[data-review-photo]'))await showPrivateFieldImage(el,el.dataset.reviewPhoto);
+  for(const card of queue.querySelectorAll('[data-target-post]')){
+   const postId=card.dataset.targetPost,commentId=card.dataset.targetComment;
+   const target=postId?'rut_field_posts':'rut_field_comments',id=postId||commentId;
+   const label=card.querySelector('[data-flag-context]');
+   try{
+    const r=await fieldRequest(target+'?select='+(postId?'caption,status':'body,status')+'&id=eq.'+encodeURIComponent(id)+'&limit=1');
+    if(!r.ok)throw Error();
+    const item=(await r.json())[0];
+    label.textContent=item?(item.caption||item.body)+' · Status: '+item.status:'Content no longer available';
+   }catch{label.textContent='Reported content unavailable; review manually before taking action.';card.querySelector('[data-mod-status="content_hidden"]').disabled=true}
+  }
  }catch{if(!section.hidden)queue.textContent='Unable to load review queue.'}
 }
 $('fieldReviewRefresh').addEventListener('click',loadFieldModeration);
 $('fieldReviewQueue').addEventListener('click',async e=>{
  const button=e.target.closest('[data-mod-status]');if(!button)return;
  const card=button.closest('[data-mod-id]'),kind=card.dataset.modKind,id=card.dataset.modId,status=button.dataset.modStatus;
- if(!['posts','comments','photos','flags'].includes(kind)||!['approved','rejected','reviewed'].includes(status))return;
- if(kind==='flags'&&status!=='reviewed')return;
- if(kind!=='flags'&&status==='reviewed')return;
+ if(!['posts','comments','photos','flags'].includes(kind)||!['approved','rejected','content_hidden','dismissed'].includes(status))return;
+ if(kind==='flags'&&!['content_hidden','dismissed'].includes(status))return;
+ if(kind!=='flags'&&!['approved','rejected'].includes(status))return;
  button.disabled=true;
  try{
-  const patch=kind==='flags'?{resolution:'reviewed',resolved_at:new Date().toISOString()}:{status,reviewed_at:new Date().toISOString()};
+  if(kind==='flags'&&status==='content_hidden'){
+   const post=card.dataset.targetPost,comment=card.dataset.targetComment,target=post?'rut_field_posts':'rut_field_comments',targetId=post||comment;
+   if(!targetId)throw Error('Missing target');
+   const hidden=await fieldRequest(target+'?id=eq.'+encodeURIComponent(targetId),{method:'PATCH',headers:{Prefer:'return=minimal'},body:JSON.stringify({status:'hidden',reviewed_at:new Date().toISOString()})});
+   if(!hidden.ok)throw Error('Could not hide content');
+  }
+  const patch=kind==='flags'?{resolution:status,resolved_at:new Date().toISOString()}:{status,reviewed_at:new Date().toISOString()};
   const response=await fieldRequest('rut_field_'+kind+'?id=eq.'+encodeURIComponent(id),{method:'PATCH',headers:{Prefer:'return=minimal'},body:JSON.stringify(patch)});
   if(!response.ok)throw Error();
   await loadFieldModeration();loadFieldTalk();
