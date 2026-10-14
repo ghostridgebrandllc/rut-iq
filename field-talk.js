@@ -116,8 +116,8 @@ $('fieldFeed').addEventListener('submit',async e=>{
 });
 
 async function loadFieldModeration(){
- const section=$('fieldModeration'),queue=$('fieldReviewQueue');
- section.hidden=true;
+ const section=$('fieldModeration'),queue=$('fieldReviewQueue'),summary=$('fieldReviewSummary');
+ section.hidden=true;summary.textContent='';queue.textContent='';
  if(!authUser||!authToken)return;
  try{
   const role=await fetch(api+'/rest/v1/rpc/rut_field_is_moderator',{method:'POST',headers:headers(authToken),body:'{}'});
@@ -134,7 +134,8 @@ async function loadFieldModeration(){
   const b=(await comments.json()).map(c=>({...c,kind:'comments',content:c.body}));
   const c=(await photos.json()).map(p=>({...p,kind:'photos',content:'Photo attachment pending manual review'}));
   const d=(await flags.json()).map(f=>({...f,kind:'flags',content:'Reported '+(f.post_id?'post':'reply')+' · Reason: '+f.reason}));
-  const pending=[...a,...b,...c,...d];
+  summary.textContent=[a.length+' posts',b.length+' replies',c.length+' photos',d.length+' reports'].join(' · ')+(d.length?' · Review reported content first':'');
+  const pending=[...d,...a,...b,...c];
   queue.innerHTML=pending.length?pending.map(item=>
    '<div class="card" data-mod-id="'+fieldText(item.id)+'" data-mod-kind="'+item.kind+'"'+(item.kind==='flags'?' data-target-post="'+fieldText(item.post_id||'')+'" data-target-comment="'+fieldText(item.comment_id||'')+'"':'')+'><p class="eyebrow">'+item.kind+'</p><p style="white-space:pre-wrap;overflow-wrap:anywhere">'+fieldText(item.content)+'</p>'+
    (item.kind==='photos'?'<div data-review-photo="'+fieldText(item.storage_path)+'"></div>':'')+
@@ -156,7 +157,7 @@ async function loadFieldModeration(){
     label.textContent=item?(item.caption||item.body)+' · Status: '+item.status:'Content no longer available';
    }catch{label.textContent='Reported content unavailable; review manually before taking action.';card.querySelector('[data-mod-status="content_hidden"]').disabled=true}
   }
- }catch{if(!section.hidden)queue.textContent='Unable to load review queue.'}
+ }catch{if(!section.hidden){queue.textContent='Unable to load review queue.';summary.textContent='Could not check pending reviews. Try refreshing.'}}
 }
 $('fieldReviewRefresh').addEventListener('click',loadFieldModeration);
 $('fieldReviewQueue').addEventListener('click',async e=>{
