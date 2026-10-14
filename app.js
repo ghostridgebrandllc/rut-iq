@@ -541,6 +541,9 @@ document.addEventListener('click',event=>{const button=event.target.closest('but
 
 function updateAccountUI(){
  $('accountStatus').textContent=authUser?'Signed in as '+authUser.email:'Sign in to manage your Rut IQ account.';
+ $('moreAccountSummary').textContent=authUser?'Signed in as '+authUser.email:'Not signed in. Sign in to share your observations with other hunters.';
+ $('moreAccountSignIn').hidden=!!authUser;
+ $('moreAccountManage').hidden=!authUser;
  $('accountSignIn').hidden=!!authUser;$('accountControls').hidden=!authUser;
  $('accountRemember').checked=rememberSession;
  $('deleteAccountPanel').hidden=true;$('deleteConfirmation').value='';$('confirmDeleteAccount').disabled=true;
