@@ -29,3 +29,13 @@ two test prices in sandbox, provision a test-only Stripe API secret in Supabase,
 deploy and validate the test endpoint, build webhook signature verification,
 complete idempotent billing-to-Pro entitlement synchronization, test cancel and
 failed-payment cases. A Checkout redirect alone MUST NOT grant Pro.
+
+## Additional work: sandbox webhook validation skeleton
+`billing/functions/rut-iq-webhook-test.ts` verifies Stripe's raw-body webhook
+signature and rejects live events. It is deliberately NOT deployed or enabled:
+trusted subscription/customer reconciliation and idempotent Pro entitlement updates
+are still to be implemented and tested. Do not enable live or beta Checkout.
+
+Security note: Supabase flagged RLS disabled on the new private billing tables.
+Before progressing, decide on their access policies and enable RLS. The tables
+must remain inaccessible to anon/authenticated clients; server-only access is intended.
