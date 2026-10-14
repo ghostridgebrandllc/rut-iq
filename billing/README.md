@@ -1,6 +1,6 @@
 # Rut IQ subscriptions — prepared, disabled
 
-The isolated Rut IQ product and monthly $7.99 / annual $49.99 USD recurring prices exist in the existing Ghost Ridge Brand sandbox. All three are inactive. Exact IDs are in catalog.json. No live product, subscription, payment link, Checkout Session, webhook destination, or charge was created. Woods IQ was not changed.
+The isolated Rut IQ product and monthly $7.99 / annual $49.99 USD recurring prices exist in the existing Ghost Ridge Brand sandbox. The product and two test prices are now active in the **sandbox only**; Checkout remains disabled. Exact IDs are in catalog.json. No live product, subscription, payment link, Checkout Session, webhook destination, or charge was created. Woods IQ was not changed.
 
 Reporting remains free. Tester access is an administrative entitlement (`plan=pro`, `source=tester`, `status=active`), optionally expiring at `current_period_end`; it must not create Stripe customers or subscriptions.
 
