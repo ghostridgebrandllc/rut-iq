@@ -33,10 +33,27 @@ async function loadFieldTalk(){
    $('fieldBlockedList').innerHTML=fieldBlockedUsers.size?[...fieldBlockedUsers].map(id=>
     '<div class="row" style="margin:10px 0"><span class="muted">Blocked hunter</span><button class="ghost" type="button" data-field-unblock="'+fieldText(id)+'">Unblock</button></div>').join(''):'<p class="muted">No blocked hunters.</p>';
   }
-  feed.innerHTML=rows.length?rows.map(p=>'<article class="card" data-field-post="'+fieldText(p.id)+'"><div class="eyebrow">'+fieldText(p.category)+' · '+fieldText(p.county||p.state)+'</div><p style="white-space:pre-wrap;overflow-wrap:anywhere">'+fieldText(p.caption)+'</p><p class="muted">'+(p.status==='approved'?'Community post':'Pending moderator approval')+' · '+fieldText(new Date(p.created_at).toLocaleDateString())+'</p>'+(p.status==='pending'&&p.author_id===authUser.id?'<div class="field-pending-photo"><label>Add photos to this pending post<input type="file" accept="image/jpeg,image/png,image/webp" multiple></label><button type="button" class="ghost" data-field-add-photos="'+fieldText(p.id)+'">Attach photos</button><p class="muted" role="status">Up to 3 photos total. Photos need scanning and moderator approval.</p></div>':'')+(p.status==='approved'?'<button type="button" class="ghost" data-field-replies="'+fieldText(p.id)+'">View replies</button> <button type="button" class="text-button" data-field-report="'+fieldText(p.id)+'">Report</button> <button type="button" class="text-button" data-field-block="'+fieldText(p.author_id)+'">Block hunter</button><div class="field-replies" hidden></div>':'')+'</article>').join(''):'<div class="card"><p>No discussions here yet. Start the conversation.</p></div>';
+  feed.innerHTML=rows.length?rows.map(p=>'<article class="card" data-field-post="'+fieldText(p.id)+'"><div class="eyebrow">'+fieldText(p.category)+' · '+fieldText(p.county||p.state)+'</div><p style="white-space:pre-wrap;overflow-wrap:anywhere">'+fieldText(p.caption)+'</p><p class="muted">'+(p.status==='approved'?'Community post':'Pending moderator approval')+' · '+fieldText(new Date(p.created_at).toLocaleDateString())+'</p>'+(p.author_id===authUser.id?'<button type="button" class="danger" data-field-delete-post="'+fieldText(p.id)+'">Delete my thread</button>':'')+(p.status==='pending'&&p.author_id===authUser.id?'<div class="field-pending-photo"><label>Add photos to this pending post<input type="file" accept="image/jpeg,image/png,image/webp" multiple></label><button type="button" class="ghost" data-field-add-photos="'+fieldText(p.id)+'">Attach photos</button><p class="muted" role="status">Up to 3 photos total. Photos need scanning and moderator approval.</p></div>':'')+(p.status==='approved'?'<button type="button" class="ghost" data-field-replies="'+fieldText(p.id)+'">View replies</button> <button type="button" class="text-button" data-field-report="'+fieldText(p.id)+'">Report</button> <button type="button" class="text-button" data-field-block="'+fieldText(p.author_id)+'">Block hunter</button><div class="field-replies" hidden></div>':'')+'</article>').join(''):'<div class="card"><p>No discussions here yet. Start the conversation.</p></div>';
   for(const p of rows){const el=feed.querySelector('[data-field-post="'+p.id+'"]');if(el)loadFieldImages(el,{post_id:p.id});}
  }catch(e){if(serial===fieldLoadSerial)feed.innerHTML='<p class="muted">Could not load Field Talk. Please retry later.</p>'}
 }
+async function deleteOwnFieldContent(type,id,button){
+ if(!authUser||!authToken)return;
+ const isPost=type==='post';
+ const question=isPost?'Delete this entire thread, including every reply and photo? This cannot be undone.':'Permanently delete this photo? This cannot be undone.';
+ if(!confirm(question))return;
+ button.disabled=true;
+ try{
+  const res=await fetch(api+'/functions/v1/rut-field-delete-own',{method:'POST',headers:headers(authToken),body:JSON.stringify({type,id})});
+  if(!res.ok)throw Error('Delete failed. Please try again.');
+  await loadFieldTalk();
+ }catch(e){button.disabled=false;alert(e.message)}
+}
+$('fieldFeed').addEventListener('click',e=>{
+ const post=e.target.closest('[data-field-delete-post]'),photo=e.target.closest('[data-field-delete-photo]');
+ if(post)deleteOwnFieldContent('post',post.dataset.fieldDeletePost,post);
+ if(photo)deleteOwnFieldContent('photo',photo.dataset.fieldDeletePhoto,photo);
+});
 $('fieldScope').addEventListener('change',loadFieldTalk);
 $('fieldBlockedList').addEventListener('click',async e=>{
  const button=e.target.closest('[data-field-unblock]');if(!button||!authUser)return;
@@ -286,11 +303,13 @@ async function loadFieldImages(container,target){
  if(!authToken)return;
  try{
   const key=target.post_id?'post_id':'comment_id',id=target[key];
-  const response=await fieldRequest('rut_field_photos?select=storage_path,status&'+key+'=eq.'+encodeURIComponent(id)+'&status=eq.approved&limit=3');
+  const response=await fieldRequest('rut_field_photos?select=id,uploader_id,storage_path,status&'+key+'=eq.'+encodeURIComponent(id)+'&limit=3');
   if(!response.ok)return;
   for(const item of await response.json()){
-   const frame=document.createElement('div');container.append(frame);
-   showPrivateFieldImage(frame,item.storage_path);
+   const frame=document.createElement('div');
+   if(item.status!=='approved'&&item.uploader_id!==authUser?.id)continue;
+   if(item.uploader_id===authUser?.id){const action=document.createElement('button');action.type='button';action.className='danger';action.textContent='Delete photo';action.dataset.fieldDeletePhoto=item.id;frame.append(action);if(item.status!=='approved'){const pending=document.createElement('p');pending.className='muted';pending.textContent='Photo awaiting moderation';frame.append(pending)}}
+   container.append(frame);showPrivateFieldImage(frame,item.storage_path);
   }
  }catch{}
 }
