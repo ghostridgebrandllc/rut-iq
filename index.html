@@ -268,6 +268,21 @@ button,summary{touch-action:manipulation}
 #fieldtalk .field-thread-title{font-size:17px}
 #fieldtalk .field-thread-topic{background:#3c3329}
 </style>
+<style>
+/* Final forum pass: browse compact title rows, see content only within the opened thread. */
+#fieldtalk .field-thread:not(.field-thread-open) .field-thread-body,
+#fieldtalk .field-thread:not(.field-thread-open) .field-thread-options,
+#fieldtalk .field-thread:not(.field-thread-open) .field-pending-photo,
+#fieldtalk .field-thread:not(.field-thread-open) .field-thread-photos{display:none}
+#fieldtalk .field-thread{padding:13px 15px}
+#fieldtalk .field-thread-open-button{min-height:43px}
+#fieldtalk .field-thread:not(.field-thread-open) .field-thread-sub{margin-top:1px}
+#fieldtalk .field-thread.field-thread-open .field-thread-body,
+#fieldtalk .field-thread.field-thread-open .field-thread-options{display:block}
+#fieldtalk .field-thread.field-thread-open .field-thread-photos img{display:block;width:100%;height:auto;object-fit:contain}
+#fieldtalk .field-thread.field-thread-open .field-thread-photos{margin:12px 0}
+#fieldtalk .field-thread.field-thread-open .field-thread-meta{margin-top:5px}
+</style>
 <section class="view" id="fieldtalk" aria-labelledby="fieldTitle">
 <div class="field-forum-header"><h1 class="home-title" id="fieldTitle">Field Talk</h1><p>The hunting forum. Everyone welcome.</p><button class="action" type="button" id="fieldStartThread">+ New discussion</button></div>
 <div class="field-forum-controls"><p id="fieldStatus" class="muted" role="status"></p><details id="fieldBlockedPanel" hidden><summary>Blocked hunters</summary><p class="muted">Blocked accounts are hidden from your Field Talk feed.</p><div id="fieldBlockedList"></div></details></div>

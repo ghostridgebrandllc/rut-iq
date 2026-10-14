@@ -43,9 +43,9 @@ async function loadFieldTalk(){
    const footer='<p class="field-thread-sub">'+(approved?'Discussion':'Pending review')+' · '+fieldText(new Date(p.created_at).toLocaleDateString())+'</p>';
    const settings=(own||approved)?'<details class="field-thread-options"><summary>•••</summary><div class="field-thread-utilities">'+(own?'<button type="button" class="danger" data-field-delete-post="'+id+'">Delete thread</button>':'')+(approved?'<button type="button" class="text-button" data-field-report="'+id+'">Report</button> <button type="button" class="text-button" data-field-block="'+fieldText(p.author_id)+'">Block hunter</button>':'')+'</div></details>':'';
    const add=(own&&!approved)?'<div class="field-pending-photo"><label>Add photos<input type="file" accept="image/jpeg,image/png,image/webp" multiple></label><button type="button" class="ghost" data-field-add-photos="'+id+'">Attach photos</button><p class="muted" role="status">Photos need moderator approval.</p></div>':'';
-   return '<article class="field-thread" data-field-post="'+id+'">'+heading+open+footer+body+settings+add+(approved?'<div class="field-replies" hidden></div>':'')+'</article>';
+   return '<article class="field-thread" data-field-post="'+id+'">'+heading+open+footer+body+settings+add+(approved?'<div class="field-thread-photos"></div><div class="field-replies" hidden></div>':'')+'</article>';
   }).join(''):'<div class="card"><p>No discussions yet. Start one!</p></div>';
-  for(const p of rows){const el=feed.querySelector('[data-field-post="'+p.id+'"]');if(el)loadFieldImages(el,{post_id:p.id});}
+  for(const p of rows.filter(p=>p.status==='pending'&&p.author_id===authUser.id)){const el=feed.querySelector('[data-field-post="'+p.id+'"]');if(el)loadFieldImages(el,{post_id:p.id});}
  }catch(e){if(serial===fieldLoadSerial)feed.innerHTML='<p class="muted">Could not load Field Talk. Please retry later.</p>'}
 }
 async function deleteOwnFieldContent(type,id,button){
@@ -146,6 +146,8 @@ $('fieldFeed').addEventListener('click',async e=>{
  const container=thread.querySelector('.field-replies');
  thread.classList.add('field-thread-open');
  $('fieldThreads').classList.add('field-single-open');
+ const photos=thread.querySelector('.field-thread-photos');
+ if(photos&&!photos.dataset.loaded){photos.dataset.loaded='true';loadFieldImages(photos,{post_id:reply.dataset.fieldReplies});}
  reply.textContent='Replies';
  if(!thread.querySelector('[data-field-back]')){
   const backButton=document.createElement('button');backButton.type='button';
