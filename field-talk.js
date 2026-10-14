@@ -58,6 +58,7 @@ $('fieldFeed').addEventListener('click',e=>{
 });
 $('fieldScope').addEventListener('change',loadFieldTalk);
 $('fieldCategoryFilter').addEventListener('change',e=>{fieldCategoryChoice=e.target.value;loadFieldTalk()});
+$('fieldStartThread').addEventListener('click',()=>{$('fieldCompose').open=true;$('fieldCompose').scrollIntoView({behavior:'smooth',block:'start'})});
 $('fieldBlockedList').addEventListener('click',async e=>{
  const button=e.target.closest('[data-field-unblock]');if(!button||!authUser)return;
  button.disabled=true;
