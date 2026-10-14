@@ -9,6 +9,10 @@ const puppeteer=require(process.env.PUPPETEER_MODULE||'/Users/brentparham/.npm/_
   await page.waitForFunction(()=>!document.body.classList.contains('booting'));
   await page.evaluate(()=>show('fieldtalk'));
   assert.equal(await page.$eval('#fieldtalk',x=>x.classList.contains('show')),true);
+  assert.equal(await page.$$eval('.dock [data-tab]',items=>items.length),5);
+  assert.ok(await page.$('[data-route="reports"]'));
+  assert.ok(await page.$('#fieldGuidelines'));
+
   assert.equal(await page.$eval('#fieldPostForm',x=>x.hidden),true);
   assert.ok((await page.$eval('#fieldStatus',x=>x.textContent)).includes('Sign in'));
   for(const width of [320,390,430]){
