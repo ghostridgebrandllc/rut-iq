@@ -14,7 +14,7 @@ CSP = (
     "connect-src 'self' https://ddxzyzjsqrnputiibdbi.supabase.co https://nominatim.openstreetmap.org; "
     "object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'"
 )
-PUBLIC = {'/', '/index.html', '/app.js', '/regions.json', '/state-bounds.json', '/counties-map.json', '/county-neighbors.json', '/manifest.webmanifest', '/sw.js', '/offline.html', '/icons/rut-iq.svg', '/icons/icon-192.png', '/icons/icon-512.png', '/icons/icon-maskable.png', '/icons/apple-touch-icon.png'}
+PUBLIC = {'/', '/index.html', '/app.js', '/field-talk.js', '/regions.json', '/state-bounds.json', '/counties-map.json', '/county-neighbors.json', '/manifest.webmanifest', '/sw.js', '/offline.html', '/icons/rut-iq.svg', '/icons/icon-192.png', '/icons/icon-512.png', '/icons/icon-maskable.png', '/icons/apple-touch-icon.png'}
 
 class Handler(SimpleHTTPRequestHandler):
     extensions_map = {**SimpleHTTPRequestHandler.extensions_map, '.webmanifest': 'application/manifest+json'}
