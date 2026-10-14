@@ -44,7 +44,7 @@ $('fieldPostForm').addEventListener('submit',async e=>{
   if(files.length&&postId){await uploadFieldPhotos(files,{post_id:postId});}
   $('fieldCaption').value='';$('fieldPostPhotos').value='';
   message.textContent='Submitted for moderator review.';loadFieldTalk();
- }catch(e){message.textContent='Unable to submit right now. Please try again.'}
+ }catch(e){message.textContent='Your text post may have been saved, but one or more photos did not upload. Check your pending post before trying again.'}
  finally{button.disabled=false}
 });
 $('fieldFeed').addEventListener('click',async e=>{
@@ -143,12 +143,18 @@ async function uploadFieldPhotos(files,target){
  for(const file of files){
   const blob=await sanitizeFieldPhoto(file);
   const path=authUser.id+'/'+targetId+'/'+fieldUUID()+'.jpg';
-  const upload=await fetch(api+'/storage/v1/object/rut-field-photos/'+path,{
-   method:'POST',headers:{apikey:pubKey,Authorization:'Bearer '+authToken,'Content-Type':'image/jpeg','x-upsert':'false'},body:blob
-  });
-  if(!upload.ok)throw Error('Photo upload failed.');
+  // Reserve a moderated attachment first. Storage RLS rejects unregistered paths.
   const result=await fieldRequest('rut_field_photos',{method:'POST',headers:{Prefer:'return=minimal'},body:JSON.stringify({uploader_id:authUser.id,storage_path:path,status:'pending',...target})});
-  if(!result.ok)throw Error('Photo attachment failed; contact support before retrying.');
+  if(!result.ok)throw Error('Photo attachment could not be created.');
+  try{
+   const upload=await fetch(api+'/storage/v1/object/rut-field-photos/'+path,{
+    method:'POST',headers:{apikey:pubKey,Authorization:'Bearer '+authToken,'Content-Type':'image/jpeg','x-upsert':'false'},body:blob
+   });
+   if(!upload.ok)throw Error('Photo upload failed.');
+  }catch(error){
+   await fieldRequest('rut_field_photos?storage_path=eq.'+encodeURIComponent(path),{method:'DELETE'}).catch(()=>{});
+   throw error;
+  }
  }
 }
 

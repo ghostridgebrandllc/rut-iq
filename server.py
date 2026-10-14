@@ -10,7 +10,7 @@ ROOT = Path(__file__).resolve().parent
 CSP = (
     "default-src 'self'; script-src 'self' https://unpkg.com; "
     "style-src 'self' 'unsafe-inline' https://unpkg.com; "
-    "img-src 'self' data: https://unpkg.com https://server.arcgisonline.com https://*.tile.openstreetmap.org; "
+    "img-src 'self' blob: data: https://unpkg.com https://server.arcgisonline.com https://*.tile.openstreetmap.org; "
     "connect-src 'self' https://ddxzyzjsqrnputiibdbi.supabase.co https://nominatim.openstreetmap.org; "
     "object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'"
 )
