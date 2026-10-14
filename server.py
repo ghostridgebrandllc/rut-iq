@@ -5,6 +5,8 @@ from pathlib import Path
 from urllib.parse import unquote, urlsplit
 import os
 import re
+import base64
+import hmac
 
 ROOT = Path(__file__).resolve().parent
 CSP = (
@@ -21,7 +23,28 @@ class Handler(SimpleHTTPRequestHandler):
     server_version = 'RutIQ'
     sys_version = ''
 
+    def _beta_authenticated(self):
+        password = os.environ.get('RUT_IQ_BETA_PASSWORD')
+        if not password:
+            return True
+        provided = self.headers.get('Authorization', '')
+        if not provided.startswith('Basic '):
+            return False
+        try:
+            decoded = base64.b64decode(provided[6:], validate=True).decode('utf-8')
+        except (ValueError, UnicodeError):
+            return False
+        return hmac.compare_digest(decoded, 'fieldtester:' + password)
+
     def send_head(self):
+        if not self._beta_authenticated():
+            self.send_response(401)
+            self.send_header('WWW-Authenticate', 'Basic realm="Rut IQ Field Talk Beta"')
+            self.send_header('Cache-Control', 'no-store')
+            self.send_header('Content-Length', '0')
+            self.end_headers()
+            return None
+
         path = unquote(urlsplit(self.path).path)
         if path not in PUBLIC and not re.fullmatch(r'/maps/[A-Za-z0-9_-]+\.json', path):
             self.send_error(404)
