@@ -1,4 +1,4 @@
-/* Field Talk beta: text discussions only; server RLS enforces moderation. */
+/* Field Talk beta: moderated public threads and private pending photo attachments. */
 'use strict';
 let fieldLoadSerial=0;
 function fieldText(value){return safe(value==null?'':value)}
@@ -24,6 +24,7 @@ async function loadFieldTalk(){
   const rows=await response.json();
   if(serial!==fieldLoadSerial)return;
   feed.innerHTML=rows.length?rows.map(p=>'<article class="card" data-field-post="'+fieldText(p.id)+'"><div class="eyebrow">'+fieldText(p.category)+' · '+fieldText(p.county||p.state)+'</div><p style="white-space:pre-wrap;overflow-wrap:anywhere">'+fieldText(p.caption)+'</p><p class="muted">'+(p.status==='approved'?'Community post':'Pending moderator approval')+' · '+fieldText(new Date(p.created_at).toLocaleDateString())+'</p>'+(p.status==='approved'?'<button type="button" class="ghost" data-field-replies="'+fieldText(p.id)+'">View replies</button> <button type="button" class="text-button" data-field-report="'+fieldText(p.id)+'">Report</button><div class="field-replies" hidden></div>':'')+'</article>').join(''):'<div class="card"><p>No discussions here yet. Start the conversation.</p></div>';
+  for(const p of rows){const el=feed.querySelector('[data-field-post="'+p.id+'"]');if(el)loadFieldImages(el,{post_id:p.id});}
  }catch(e){if(serial===fieldLoadSerial)feed.innerHTML='<p class="muted">Could not load Field Talk. Please retry later.</p>'}
 }
 $('fieldScope').addEventListener('change',loadFieldTalk);
@@ -64,7 +65,8 @@ $('fieldFeed').addEventListener('click',async e=>{
   const url='rut_field_comments?select=id,body,created_at&post_id=eq.'+encodeURIComponent(reply.dataset.fieldReplies)+'&status=eq.approved&order=created_at.asc&limit=50';
   const res=await fieldRequest(url);if(!res.ok)throw Error();
   const comments=await res.json();
-  container.innerHTML=comments.map(c=>'<p class="card" style="white-space:pre-wrap;overflow-wrap:anywhere">'+fieldText(c.body)+'</p>').join('')+'<form class="field-comment-form"><label>Reply<textarea required maxlength="1000" rows="2"></textarea></label><label>Photos (up to 3)<input type="file" accept="image/jpeg,image/png,image/webp" multiple></label><button class="ghost" type="submit">Submit reply for review</button><p class="muted" role="status"></p></form>';
+  container.innerHTML=comments.map(c=>'<div class="card" data-field-comment="'+fieldText(c.id)+'"><p style="white-space:pre-wrap;overflow-wrap:anywhere">'+fieldText(c.body)+'</p></div>').join('')+'<form class="field-comment-form"><label>Reply<textarea required maxlength="1000" rows="2"></textarea></label><label>Photos (up to 3)<input type="file" accept="image/jpeg,image/png,image/webp" multiple></label><button class="ghost" type="submit">Submit reply for review</button><p class="muted" role="status"></p></form>';
+  for(const c of comments){const el=container.querySelector('[data-field-comment="'+c.id+'"]');if(el)loadFieldImages(el,{comment_id:c.id});}
  }catch{container.textContent='Unable to load replies.'}
 });
 $('fieldFeed').addEventListener('submit',async e=>{
@@ -85,21 +87,28 @@ async function loadFieldModeration(){
   const role=await fetch(api+'/rest/v1/rpc/rut_field_is_moderator',{method:'POST',headers:headers(authToken),body:'{}'});
   if(!role.ok||(await role.json())!==true)return;
   section.hidden=false;queue.textContent='Loading moderation queue…';
-  const [posts,comments]=await Promise.all([
+  const [posts,comments,photos]=await Promise.all([
    fieldRequest('rut_field_posts?select=id,caption,created_at&status=eq.pending&order=created_at.asc&limit=50'),
-   fieldRequest('rut_field_comments?select=id,body,created_at&status=eq.pending&order=created_at.asc&limit=50')
+   fieldRequest('rut_field_comments?select=id,body,created_at&status=eq.pending&order=created_at.asc&limit=50'),
+   fieldRequest('rut_field_photos?select=id,storage_path,created_at&status=eq.pending&order=created_at.asc&limit=50')
   ]);
-  if(!posts.ok||!comments.ok)throw Error();
+  if(!posts.ok||!comments.ok||!photos.ok)throw Error();
   const a=(await posts.json()).map(p=>({...p,kind:'posts',content:p.caption}));
   const b=(await comments.json()).map(c=>({...c,kind:'comments',content:c.body}));
-  queue.innerHTML=[...a,...b].length?[...a,...b].map(item=>'<div class="card" data-mod-id="'+fieldText(item.id)+'" data-mod-kind="'+item.kind+'"><p class="eyebrow">'+item.kind+'</p><p style="white-space:pre-wrap;overflow-wrap:anywhere">'+fieldText(item.content)+'</p><button type="button" class="ghost" data-mod-status="approved">Approve</button> <button type="button" class="danger" data-mod-status="rejected">Reject</button></div>').join(''):'<p class="muted">No pending posts or replies.</p>';
+  const c=(await photos.json()).map(p=>({...p,kind:'photos',content:'Photo attachment pending manual review'}));
+  const pending=[...a,...b,...c];
+  queue.innerHTML=pending.length?pending.map(item=>
+   '<div class="card" data-mod-id="'+fieldText(item.id)+'" data-mod-kind="'+item.kind+'"><p class="eyebrow">'+item.kind+'</p><p style="white-space:pre-wrap;overflow-wrap:anywhere">'+fieldText(item.content)+'</p>'+
+   (item.kind==='photos'?'<div data-review-photo="'+fieldText(item.storage_path)+'"></div>':'')+
+   '<button type="button" class="ghost" data-mod-status="approved">Approve</button> <button type="button" class="danger" data-mod-status="rejected">Reject</button></div>').join(''):'<p class="muted">No pending posts, replies or photos.</p>';
+  for(const el of queue.querySelectorAll('[data-review-photo]'))await showPrivateFieldImage(el,el.dataset.reviewPhoto);
  }catch{if(!section.hidden)queue.textContent='Unable to load review queue.'}
 }
 $('fieldReviewRefresh').addEventListener('click',loadFieldModeration);
 $('fieldReviewQueue').addEventListener('click',async e=>{
  const button=e.target.closest('[data-mod-status]');if(!button)return;
  const card=button.closest('[data-mod-id]'),kind=card.dataset.modKind,id=card.dataset.modId,status=button.dataset.modStatus;
- if(!['posts','comments'].includes(kind)||!['approved','rejected'].includes(status))return;
+ if(!['posts','comments','photos'].includes(kind)||!['approved','rejected'].includes(status))return;
  button.disabled=true;
  try{
   const response=await fieldRequest('rut_field_'+kind+'?id=eq.'+encodeURIComponent(id),{method:'PATCH',headers:{Prefer:'return=minimal'},body:JSON.stringify({status,reviewed_at:new Date().toISOString()})});
@@ -141,4 +150,31 @@ async function uploadFieldPhotos(files,target){
   const result=await fieldRequest('rut_field_photos',{method:'POST',headers:{Prefer:'return=minimal'},body:JSON.stringify({uploader_id:authUser.id,storage_path:path,status:'pending',...target})});
   if(!result.ok)throw Error('Photo attachment failed; contact support before retrying.');
  }
+}
+
+async function showPrivateFieldImage(container,path){
+ try{
+  const response=await fetch(api+'/storage/v1/object/authenticated/rut-field-photos/'+path,{headers:{apikey:pubKey,Authorization:'Bearer '+authToken}});
+  if(!response.ok)throw Error('Photo unavailable');
+  const blob=await response.blob();
+  if(!blob.type.startsWith('image/'))throw Error('Invalid photo');
+  const url=URL.createObjectURL(blob),img=document.createElement('img');
+  img.src=url;img.alt='Photo attached to Field Talk thread';
+  img.style.cssText='display:block;max-width:100%;max-height:420px;object-fit:contain;border-radius:10px;margin:10px 0';
+  img.onload=()=>URL.revokeObjectURL(url);
+  img.onerror=()=>URL.revokeObjectURL(url);
+  container.append(img);
+ }catch{container.textContent='Photo preview unavailable.'}
+}
+async function loadFieldImages(container,target){
+ if(!authToken)return;
+ try{
+  const key=target.post_id?'post_id':'comment_id',id=target[key];
+  const response=await fieldRequest('rut_field_photos?select=storage_path,status&'+key+'=eq.'+encodeURIComponent(id)+'&status=eq.approved&limit=3');
+  if(!response.ok)return;
+  for(const item of await response.json()){
+   const frame=document.createElement('div');container.append(frame);
+   showPrivateFieldImage(frame,item.storage_path);
+  }
+ }catch{}
 }
