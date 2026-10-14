@@ -3,6 +3,7 @@
 let fieldLoadSerial=0;
 let fieldModerationSerial=0;
 let fieldBlockedUsers=new Set();
+let fieldCategoryChoice="all";
 function fieldText(value){return safe(value==null?'':value)}
 function fieldRequest(path,opts={}){return fetch(api+'/rest/v1/'+path,{...opts,headers:{...headers(authToken),...(opts.headers||{})}})}
 async function loadFieldTalk(){
@@ -33,7 +34,8 @@ async function loadFieldTalk(){
    $('fieldBlockedList').innerHTML=fieldBlockedUsers.size?[...fieldBlockedUsers].map(id=>
     '<div class="row" style="margin:10px 0"><span class="muted">Blocked hunter</span><button class="ghost" type="button" data-field-unblock="'+fieldText(id)+'">Unblock</button></div>').join(''):'<p class="muted">No blocked hunters.</p>';
   }
-  feed.innerHTML=rows.length?rows.map(p=>'<article class="card" data-field-post="'+fieldText(p.id)+'"><div class="eyebrow">'+fieldText(p.category)+' · '+fieldText(p.county||p.state)+'</div><p style="white-space:pre-wrap;overflow-wrap:anywhere">'+fieldText(p.caption)+'</p><p class="muted">'+(p.status==='approved'?'Community post':'Pending moderator approval')+' · '+fieldText(new Date(p.created_at).toLocaleDateString())+'</p>'+(p.author_id===authUser.id?'<button type="button" class="danger" data-field-delete-post="'+fieldText(p.id)+'">Delete my thread</button>':'')+(p.status==='pending'&&p.author_id===authUser.id?'<div class="field-pending-photo"><label>Add photos to this pending post<input type="file" accept="image/jpeg,image/png,image/webp" multiple></label><button type="button" class="ghost" data-field-add-photos="'+fieldText(p.id)+'">Attach photos</button><p class="muted" role="status">Up to 3 photos total. Photos need scanning and moderator approval.</p></div>':'')+(p.status==='approved'?'<button type="button" class="ghost" data-field-replies="'+fieldText(p.id)+'">View replies</button> <button type="button" class="text-button" data-field-report="'+fieldText(p.id)+'">Report</button> <button type="button" class="text-button" data-field-block="'+fieldText(p.author_id)+'">Block hunter</button><div class="field-replies" hidden></div>':'')+'</article>').join(''):'<div class="card"><p>No discussions here yet. Start the conversation.</p></div>';
+  if(fieldCategoryChoice!=='all')rows=rows.filter(p=>p.category===fieldCategoryChoice);
+  feed.innerHTML=rows.length?rows.map(p=>'<article class="card" data-field-post="'+fieldText(p.id)+'"><div class="eyebrow">'+fieldText(p.category)+' · '+fieldText(p.county||p.state)+'</div><p style="white-space:pre-wrap;overflow-wrap:anywhere">'+fieldText(p.caption)+'</p><p class="muted">'+(p.status==='approved'?'Community post':'Pending moderator approval')+' · '+fieldText(new Date(p.created_at).toLocaleDateString())+'</p>'+(p.author_id===authUser.id?'<button type="button" class="danger" data-field-delete-post="'+fieldText(p.id)+'">Delete my thread</button>':'')+(p.status==='pending'&&p.author_id===authUser.id?'<div class="field-pending-photo"><label>Add photos to this pending post<input type="file" accept="image/jpeg,image/png,image/webp" multiple></label><button type="button" class="ghost" data-field-add-photos="'+fieldText(p.id)+'">Attach photos</button><p class="muted" role="status">Up to 3 photos total. Photos need scanning and moderator approval.</p></div>':'')+(p.status==='approved'?'<div class="field-thread-utilities"><button type="button" class="text-button" data-field-report="'+fieldText(p.id)+'">Report</button> <button type="button" class="text-button" data-field-block="'+fieldText(p.author_id)+'">Block hunter</button></div><div class="field-replies" hidden></div>':'')+'</article>').join(''):'<div class="card"><p>No discussions here yet. Start the conversation.</p></div>';
   for(const p of rows){const el=feed.querySelector('[data-field-post="'+p.id+'"]');if(el)loadFieldImages(el,{post_id:p.id});}
  }catch(e){if(serial===fieldLoadSerial)feed.innerHTML='<p class="muted">Could not load Field Talk. Please retry later.</p>'}
 }
@@ -55,6 +57,7 @@ $('fieldFeed').addEventListener('click',e=>{
  if(photo)deleteOwnFieldContent('photo',photo.dataset.fieldDeletePhoto,photo);
 });
 $('fieldScope').addEventListener('change',loadFieldTalk);
+$('fieldCategoryFilter').addEventListener('change',e=>{fieldCategoryChoice=e.target.value;loadFieldTalk()});
 $('fieldBlockedList').addEventListener('click',async e=>{
  const button=e.target.closest('[data-field-unblock]');if(!button||!authUser)return;
  button.disabled=true;
