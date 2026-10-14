@@ -103,14 +103,18 @@ async function loadDailyReport(){
   if(request!==dailyRequest||st!==selectedState||county!==region)return;
   const r=data[0],total=Number(r?.reports_24h||0),hunters=Number(r?.hunters_24h||0);
   if(!total){
-   box.innerHTML='<div class="daily-stats"><div class="daily-stat"><strong>0</strong><span>Reports · 24 hours</span></div><div class="daily-stat"><strong>0</strong><span>Hunters reporting</span></div></div><p class="daily-empty">No fresh reports yet.</p><p class="daily-note">Be the first to share what you saw. An empty report does not mean deer are inactive.</p><div class="daily-actions"><button class="action" data-route="submit" type="button">Report a sighting</button><button class="ghost" data-route="heatmap" type="button">Nearby map</button></div><p class="daily-meta">Includes reports sent in the last 24 hours for observations from today or yesterday. Dates follow your device’s local calendar.</p>';
+   box.innerHTML='<p class="rut-activity-state">No hunter reports in the last 24 hours</p><p class="daily-note">No reports doesn’t mean deer are inactive.</p><div class="daily-actions"><button class="action" data-route="submit" type="button">Report a sighting</button><button class="ghost" data-route="heatmap" type="button">Nearby map</button></div><p class="daily-meta">Includes reports sent in the last 24 hours for observations from today or yesterday. Dates follow your device’s local calendar.</p>';
    return;
   }
   const items=[['Cruising',r.cruising_24h],['Chasing',r.chasing_24h],['Tending',r.tending_24h],['Breeding',r.breeding_24h],['Scrapes / rubs',r.signs_24h],['No rut behavior seen',r.no_activity_24h]];
   const badges=items.filter(x=>Number(x[1])>0).map(([label,n])=>'<div class="behavior-row"><span>'+safe(label)+'</span><strong>'+Number(n)+'</strong></div>').join('');
-  const updated=r.latest_submission_at?new Date(r.latest_submission_at).toLocaleString('en-US',{month:'short',day:'numeric',hour:'numeric',minute:'2-digit'}):'';
+  const latest=r.latest_submission_at?new Date(r.latest_submission_at):null;
+  const ageMinutes=latest?Math.max(0,Math.floor((Date.now()-latest.getTime())/60000)):null;
+  const freshness=ageMinutes===null?'Report time unavailable':ageMinutes<60?'Latest report '+Math.max(1,ageMinutes)+' min ago':ageMinutes<1440?'Latest report '+Math.floor(ageMinutes/60)+' hr ago':'Latest report '+latest.toLocaleString('en-US',{month:'short',day:'numeric',hour:'numeric',minute:'2-digit'});
+  const chasing=Number(r.chasing_24h||0),tending=Number(r.tending_24h||0),breeding=Number(r.breeding_24h||0);
+  const activeRut=chasing+tending+breeding;
   const confidence=total>=5&&hunters>=3?'Multiple hunters contributed. These are observations, not predictions.':'Early reports only — not enough independent observations to establish a reliable regional trend.';
-  box.innerHTML='<div class="daily-stats"><div class="daily-stat"><strong>'+total+'</strong><span>Reports · 24 hours</span></div><div class="daily-stat"><strong>'+hunters+'</strong><span>Hunters reporting</span></div></div><div class="daily-behavior-list">'+badges+'</div><p class="daily-note">'+safe(confidence)+'</p><p class="daily-meta">Last report: '+safe(updated)+' · Reports submitted in the last 24 hours, describing observations from today or yesterday. Dates follow your device’s local calendar.</p>';
+  box.innerHTML='<div class="daily-stats"><div class="daily-stat"><strong>'+total+'</strong><span>Reports · 24 hours</span></div><div class="daily-stat"><strong>'+hunters+'</strong><span>Hunters reporting</span></div><div class="daily-stat"><strong>'+activeRut+'</strong><span>Chasing / tending / breeding</span></div></div><p class="rut-freshness">● '+safe(freshness)+'</p><div class="daily-behavior-list">'+badges+'</div><p class="daily-note">'+safe(confidence)+'</p>';
  }catch(error){
   if(request===dailyRequest)box.innerHTML='<p class="daily-note">Daily reports are temporarily unavailable. Please try again later.</p><button class="ghost" type="button" data-action="retry-daily">Retry</button>';
  }
