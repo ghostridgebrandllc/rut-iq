@@ -23,11 +23,24 @@ const puppeteer=require(process.env.PUPPETEER_MODULE||'/Users/brentparham/.npm/_
    document.querySelector('#fieldModeration').hidden=false;
    await loadFieldModeration();
    const signedOutHidden=document.querySelector('#fieldModeration').hidden;
+   // A moderator check started before sign-out must not reopen the private queue.
+   let finishRole;
+   const delayedRole=new Promise(resolve=>{finishRole=resolve});
+   authUser={id:'11111111-1111-4111-8111-111111111111',email:'moderator@example.invalid'};
+   authToken='mock-moderator';
+   window.fetch=async(url,opts={})=>String(url).includes('/rest/v1/rpc/rut_field_is_moderator')?delayedRole:realFetch(url,opts);
+   const pending=loadFieldModeration();
+   authUser=null;authToken=null;
+   await loadFieldModeration();
+   finishRole(reply(true));
+   await pending;
+   const staleRequestHidden=document.querySelector('#fieldModeration').hidden;
    window.fetch=realFetch;
-   return {deniedHidden,signedOutHidden,calls};
+   return {deniedHidden,signedOutHidden,staleRequestHidden,calls};
   });
   assert.ok(output.deniedHidden,'regular hunter must never see review queue');
   assert.ok(output.signedOutHidden,'signed-out hunter must never see review queue');
+  assert.ok(output.staleRequestHidden,'stale moderator request must not reopen queue after sign-out');
   assert.equal(output.calls.filter(x=>x.includes('/rest/v1/rpc/rut_field_is_moderator')).length,1);
   assert.deepEqual(errors,[]);
   console.log('PASS denied moderator role / signed-out hides moderation UI without fetching queue (mocked)');

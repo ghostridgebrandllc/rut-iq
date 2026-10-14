@@ -1,6 +1,7 @@
 /* Field Talk beta: moderated public threads and private pending photo attachments. */
 'use strict';
 let fieldLoadSerial=0;
+let fieldModerationSerial=0;
 let fieldBlockedUsers=new Set();
 function fieldText(value){return safe(value==null?'':value)}
 function fieldRequest(path,opts={}){return fetch(api+'/rest/v1/'+path,{...opts,headers:{...headers(authToken),...(opts.headers||{})}})}
@@ -116,12 +117,14 @@ $('fieldFeed').addEventListener('submit',async e=>{
 });
 
 async function loadFieldModeration(){
+ const serial=++fieldModerationSerial,viewer=authUser?.id,token=authToken;
  const section=$('fieldModeration'),queue=$('fieldReviewQueue'),summary=$('fieldReviewSummary');
+ const stillAuthorized=()=>serial===fieldModerationSerial&&authUser?.id===viewer&&authToken===token;
  section.hidden=true;summary.textContent='';queue.textContent='';
  if(!authUser||!authToken)return;
  try{
   const role=await fetch(api+'/rest/v1/rpc/rut_field_is_moderator',{method:'POST',headers:headers(authToken),body:'{}'});
-  if(!role.ok||(await role.json())!==true)return;
+  if(!stillAuthorized()||!role.ok||(await role.json())!==true||!stillAuthorized())return;
   section.hidden=false;queue.textContent='Loading moderation queue…';
   const [posts,comments,photos,flags]=await Promise.all([
    fieldRequest('rut_field_posts?select=id,caption,created_at&status=eq.pending&order=created_at.asc&limit=50'),
@@ -129,12 +132,14 @@ async function loadFieldModeration(){
    fieldRequest('rut_field_photos?select=id,storage_path,created_at&status=eq.pending&order=created_at.asc&limit=50'),
    fieldRequest('rut_field_flags?select=id,reason,post_id,comment_id,created_at&resolved_at=is.null&order=created_at.asc&limit=50')
   ]);
+  if(!stillAuthorized())return;
   if(!posts.ok||!comments.ok||!photos.ok||!flags.ok)throw Error();
   const a=(await posts.json()).map(p=>({...p,kind:'posts',content:p.caption}));
   const b=(await comments.json()).map(c=>({...c,kind:'comments',content:c.body}));
   const c=(await photos.json()).map(p=>({...p,kind:'photos',content:'Photo attachment pending manual review'}));
   const d=(await flags.json()).map(f=>({...f,kind:'flags',content:'Reported '+(f.post_id?'post':'reply')+' · Reason: '+f.reason}));
   summary.textContent=[a.length+' posts',b.length+' replies',c.length+' photos',d.length+' reports'].join(' · ')+(d.length?' · Review reported content first':'');
+  if(!stillAuthorized())return;
   const pending=[...d,...a,...b,...c];
   queue.innerHTML=pending.length?pending.map(item=>
    '<div class="card" data-mod-id="'+fieldText(item.id)+'" data-mod-kind="'+item.kind+'"'+(item.kind==='flags'?' data-target-post="'+fieldText(item.post_id||'')+'" data-target-comment="'+fieldText(item.comment_id||'')+'"':'')+'><p class="eyebrow">'+item.kind+'</p><p style="white-space:pre-wrap;overflow-wrap:anywhere">'+fieldText(item.content)+'</p>'+
@@ -144,6 +149,7 @@ async function loadFieldModeration(){
    const card=el.closest('[data-mod-id]'),approve=card.querySelector('[data-mod-status="approved"]');
    if(approve)approve.disabled=true;
    const previewOk=await showPrivateFieldImage(el,el.dataset.reviewPhoto);
+   if(!stillAuthorized()){section.hidden=true;return}
    if(approve&&previewOk)approve.disabled=false;
   }
   for(const card of queue.querySelectorAll('[data-target-post]')){
@@ -152,12 +158,14 @@ async function loadFieldModeration(){
    const label=card.querySelector('[data-flag-context]');
    try{
     const r=await fieldRequest(target+'?select='+(postId?'caption,status':'body,status')+'&id=eq.'+encodeURIComponent(id)+'&limit=1');
+    if(!stillAuthorized())return;
     if(!r.ok)throw Error();
     const item=(await r.json())[0];
+    if(!stillAuthorized())return;
     label.textContent=item?(item.caption||item.body)+' · Status: '+item.status:'Content no longer available';
    }catch{label.textContent='Reported content unavailable; review manually before taking action.';card.querySelector('[data-mod-status="content_hidden"]').disabled=true}
   }
- }catch{if(!section.hidden){queue.textContent='Unable to load review queue.';summary.textContent='Could not check pending reviews. Try refreshing.'}}
+ }catch{if(stillAuthorized()&&!section.hidden){queue.textContent='Unable to load review queue.';summary.textContent='Could not check pending reviews. Try refreshing.'}}
 }
 $('fieldReviewRefresh').addEventListener('click',loadFieldModeration);
 $('fieldReviewQueue').addEventListener('click',async e=>{
