@@ -1,0 +1,18 @@
+const assert=require('node:assert/strict');
+const fs=require('node:fs');
+const cat=JSON.parse(fs.readFileSync('billing/catalog.json','utf8'));
+const checkout=fs.readFileSync('billing/functions/rut-iq-checkout-test.ts','utf8');
+const webhook=fs.readFileSync('billing/functions/rut-iq-stripe-webhook-test.ts','utf8');
+const sql=fs.readFileSync('database/rut_iq_stripe_webhook_reconciliation.sql','utf8');
+assert.equal(cat.livemode,false);
+assert.equal(cat.checkout_enabled,false);
+assert.equal(cat.prices.monthly.amount,799);
+assert.equal(cat.prices.annual.amount,4999);
+assert.ok(checkout.includes('sk_test_') && checkout.includes('getUser(jwt)'));
+assert.ok(checkout.includes('line_items[0][price]') && checkout.includes('metadata[rut_user_id]'));
+assert.ok(webhook.includes('constructEventAsync') && webhook.includes('event.livemode'));
+assert.ok(webhook.includes('subscription.metadata?.app!=="rut_iq"'));
+assert.ok(webhook.includes('rut_iq_apply_stripe_event'));
+assert.ok(sql.includes("auth.role()<>'service_role'") && sql.includes('rut_private.rut_billing_events'));
+assert.ok(sql.includes("existing_source='tester'"));
+console.log('PASS sandbox price configuration, no live checkout, server identity and webhook reconciliation controls (static contract)');
