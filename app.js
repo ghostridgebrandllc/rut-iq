@@ -193,11 +193,22 @@ function updateSignInButton(){
  $('passwordSignIn').disabled=!!authUser||authBusy||(authMode==='create'&&wait>0);
  $('authCreateTab').disabled=authBusy;$('authSignInTab').disabled=authBusy;
 }
+document.addEventListener('click',event=>{
+ const button=event.target.closest('[data-toggle-password]');
+ if(!button)return;
+ const input=$(button.dataset.togglePassword);
+ if(!input)return;
+ const reveal=input.type==='password';
+ input.type=reveal?'text':'password';
+ button.textContent=reveal?'Hide':'Show';
+ button.setAttribute('aria-pressed',String(reveal));
+ button.setAttribute('aria-label',(reveal?'Hide':'Show')+' password');
+});
 function updateAuthUI(){
  if(!authUser){++testAccessRequest;setTestState(false,false);$('authPassword').value='';$('newPassword').value='';$('confirmPassword').value=''}
  $('mapGuestActions').hidden=!!authUser;$('heatmap').classList.toggle('guest-map',!authUser);
  updateAccountUI();
- $('signedOutAuth').hidden=!!authUser;$('signedInManage').hidden=!authUser;
+ $('signedOutAuth').hidden=!!authUser;$('signedInActions').hidden=!authUser;
  $('authStatus').textContent=authUser?'Signed in as '+authUser.email:'Sign in securely to contribute reports';
  updateSignInButton();
  $('signOutButton').hidden=!authUser;$('authEmail').hidden=!!authUser;
