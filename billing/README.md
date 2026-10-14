@@ -16,3 +16,16 @@ Reporting remains free. Tester access is an administrative entitlement (`plan=pr
 8. Only after owner approval, provision corresponding live resources and configure secrets in the backend environment. No secret belongs in index.html or this repository.
 
 References: https://docs.stripe.com/billing/subscriptions/build-subscriptions and https://docs.stripe.com/webhooks
+
+## Added: sandbox-only checkout foundation
+The code for a JWT-verified hosted subscription Checkout creator is in
+`billing/functions/rut-iq-checkout-test.ts`. It allows only the two Rut IQ
+sandbox price IDs, verifies the Supabase user server-side, rejects existing
+active Pro members and refuses live Stripe keys. It is intentionally not
+connected to the customer-facing Subscribe buttons yet.
+
+**Do not enable Checkout until all of the following are done:** activate the
+two test prices in sandbox, provision a test-only Stripe API secret in Supabase,
+deploy and validate the test endpoint, build webhook signature verification,
+complete idempotent billing-to-Pro entitlement synchronization, test cancel and
+failed-payment cases. A Checkout redirect alone MUST NOT grant Pro.
