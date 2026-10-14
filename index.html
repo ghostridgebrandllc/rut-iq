@@ -246,6 +246,20 @@ button,summary{touch-action:manipulation}
 #fieldtalk #fieldThreads.field-single-open~#fieldModeration,
 #fieldtalk #fieldThreads.field-single-open~#fieldGuidelines{display:none}
 </style>
+<style>
+#fieldtalk .field-thread{position:relative;padding:15px 13px;background:#28221c;border:1px solid #514335;border-radius:12px;margin:7px 0}
+#fieldtalk .field-thread-open-button{background:none;border:0;color:#f8f1e7;text-align:left;width:100%;display:flex;justify-content:space-between;align-items:center;padding:7px 0;gap:12px}
+#fieldtalk .field-thread-open-button span:last-child{font-size:27px;color:#d3ad78}
+#fieldtalk .field-thread-open-button .field-thread-title{margin:0;font-size:17px;font-weight:750}
+#fieldtalk .field-thread-sub{color:#af9e8b;font-size:11px;margin:5px 0 0}
+#fieldtalk .field-thread-options{margin-top:7px}
+#fieldtalk .field-thread-options>summary{cursor:pointer;font-size:16px;color:#b9a68b;width:max-content;padding:3px 8px;list-style:none}
+#fieldtalk .field-thread-options .field-thread-utilities{padding:8px 0;gap:7px}
+#fieldtalk .field-thread-options .field-thread-utilities button{font-size:12px}
+#fieldtalk .field-thread.field-thread-open .field-thread-open-button{cursor:default}
+#fieldtalk .field-thread.field-thread-open .field-thread-open-button span:last-child{display:none}
+#fieldtalk .field-thread.field-thread-open .field-thread-open-button .field-thread-title{font-size:25px}
+</style>
 <section class="view" id="fieldtalk" aria-labelledby="fieldTitle">
 <div class="field-forum-header"><h1 class="home-title" id="fieldTitle">Field Talk</h1><p>Hunting conversations near you.</p><button class="action" type="button" id="fieldStartThread">+ New discussion</button></div>
 <div class="field-forum-controls"><label>Community area<select id="fieldScope"><option value="state">My state</option><option value="county">My county</option></select></label><p id="fieldStatus" class="muted" role="status"></p><details id="fieldBlockedPanel" hidden><summary>Blocked hunters</summary><p class="muted">Blocked accounts are hidden from your Field Talk feed.</p><div id="fieldBlockedList"></div></details></div>
