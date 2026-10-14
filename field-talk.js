@@ -9,19 +9,17 @@ function fieldRequest(path,opts={}){return fetch(api+'/rest/v1/'+path,{...opts,h
 async function loadFieldTalk(){
  const serial=++fieldLoadSerial,feed=$('fieldFeed'),status=$('fieldStatus');
  $('fieldThreads').classList.remove('field-single-open');
- const state=selectedState,county=region,scope=$('fieldScope').value;
+ const state=selectedState,county=region;
  fieldBlockedUsers=new Set();
  $('fieldPostForm').hidden=!authUser;
  if(authUser)loadFieldModeration();
  if(!authUser){status.textContent='Sign in to view and contribute to Field Talk.';feed.innerHTML='<button class="action" data-route="signup">Sign in / Join</button>';return}
- if(!state||(scope==='county'&&!county)){status.textContent='Choose your state and county on Home first.';feed.innerHTML='<button class="ghost" data-route="home">Choose a county</button>';return}
- status.textContent=scope==='county'?county+', '+state:state+' statewide';
+ status.textContent='All hunters · Nationwide discussions';
  feed.innerHTML='<p class="muted">Loading conversations…</p>';
  try{
   const url=new URL(api+'/rest/v1/rut_field_posts');
   url.searchParams.set('select','id,author_id,state,county,category,caption,status,created_at');
-  url.searchParams.set('state','eq.'+state);
-  if(scope==='county')url.searchParams.set('county','eq.'+county);
+
   url.searchParams.set('order','created_at.desc');
   url.searchParams.set('limit','40');
   const response=await fieldRequest(url.pathname.replace('/rest/v1/','')+url.search);
@@ -39,7 +37,7 @@ async function loadFieldTalk(){
   feed.innerHTML=rows.length?rows.map(p=>{
    const own=p.author_id===authUser.id,approved=p.status==='approved';
    const id=fieldText(p.id),title=fieldText(p.caption.split('\n')[0].slice(0,120));
-   const heading='<div class="field-thread-meta"><span class="field-thread-topic">'+fieldText(p.category)+'</span><span class="field-thread-area">'+fieldText(p.county||p.state)+'</span></div>';
+   const heading='<div class="field-thread-meta"><span class="field-thread-topic">'+fieldText(p.category)+'</span><span class="field-thread-area">'+fieldText(p.county||p.state||'All hunters')+'</span></div>';
    const open=approved?'<button type="button" class="field-thread-open-button" data-field-replies="'+id+'"><span class="field-thread-title">'+title+'</span><span aria-hidden="true">›</span></button>':'<h3 class="field-thread-title">'+title+'</h3>';
    const body=p.caption.includes('\n')?'<p class="field-thread-body">'+fieldText(p.caption.split('\n').slice(1).join('\n'))+'</p>':'';
    const footer='<p class="field-thread-sub">'+(approved?'Discussion':'Pending review')+' · '+fieldText(new Date(p.created_at).toLocaleDateString())+'</p>';
@@ -67,7 +65,6 @@ $('fieldFeed').addEventListener('click',e=>{
  if(post)deleteOwnFieldContent('post',post.dataset.fieldDeletePost,post);
  if(photo)deleteOwnFieldContent('photo',photo.dataset.fieldDeletePhoto,photo);
 });
-$('fieldScope').addEventListener('change',loadFieldTalk);
 $('fieldCategoryFilter').addEventListener('change',e=>{fieldCategoryChoice=e.target.value;loadFieldTalk()});
 $('fieldStartThread').addEventListener('click',()=>{$('fieldCompose').open=true;$('fieldCompose').scrollIntoView({behavior:'smooth',block:'start'})});
 $('fieldBlockedList').addEventListener('click',async e=>{
@@ -82,12 +79,11 @@ $('fieldBlockedList').addEventListener('click',async e=>{
 $('fieldPostForm').addEventListener('submit',async e=>{
  e.preventDefault();const message=$('fieldPostMessage'),button=e.currentTarget.querySelector('[type=submit]');
  if(!authUser||!authToken){show('signup');return}
- if(!selectedState){message.textContent='Choose a hunting state on Home first.';return}
  const caption=$('fieldCaption').value.trim();
  if(!caption||caption.length>2000)return;
  button.disabled=true;message.textContent='Submitting for moderation…';
  try{
-  const res=await fieldRequest('rut_field_posts',{method:'POST',headers:{Prefer:'return=representation'},body:JSON.stringify({author_id:authUser.id,state:selectedState,county:region||null,category:$('fieldCategory').value,caption,status:'pending'})});
+  const res=await fieldRequest('rut_field_posts',{method:'POST',headers:{Prefer:'return=representation'},body:JSON.stringify({author_id:authUser.id,state:null,county:null,category:$('fieldCategory').value,caption,status:'pending'})});
   if(!res.ok)throw Error('Could not submit your post.');
   const newPost=await res.json().catch(()=>[]);
   const postId=newPost[0]?.id;
