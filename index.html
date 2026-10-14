@@ -230,6 +230,22 @@ button,summary{touch-action:manipulation}
 #fieldtalk .field-thread-footer button{border:0;background:#443524;color:#ead0a9}
 #fieldtalk .field-thread-footer small{font-size:10px}
 </style>
+<style>
+#fieldtalk #fieldThreads.field-single-open>.field-forum-list-title,
+#fieldtalk #fieldThreads.field-single-open>.field-category-filter{display:none}
+#fieldtalk #fieldThreads.field-single-open #fieldFeed>.field-thread:not(.field-thread-open){display:none}
+#fieldtalk .field-thread .field-back{display:none}
+#fieldtalk .field-thread.field-thread-open{border:0;background:transparent;margin:0;padding:5px 0;box-shadow:none}
+#fieldtalk .field-thread.field-thread-open .field-back{display:block;background:none;border:0;color:#e4c190;font-weight:700;font-size:14px;padding:12px 2px;margin:0 0 17px}
+#fieldtalk .field-thread.field-thread-open .field-thread-title{font-size:25px;line-height:1.3;margin-top:14px}
+#fieldtalk .field-thread.field-thread-open .field-thread-footer button{display:none}
+#fieldtalk .field-thread.field-thread-open .field-replies{display:block;padding-top:18px;margin-top:20px}
+#fieldtalk .field-thread.field-thread-open .field-replies>.card{background:#2d251e;border-radius:13px;margin:10px 0}
+#fieldtalk .field-thread.field-thread-open .field-comment-form{margin:16px 0;padding:14px;background:#2b241c;border:1px solid #584630;border-radius:14px}
+#fieldtalk #fieldThreads.field-single-open~#fieldCompose,
+#fieldtalk #fieldThreads.field-single-open~#fieldModeration,
+#fieldtalk #fieldThreads.field-single-open~#fieldGuidelines{display:none}
+</style>
 <section class="view" id="fieldtalk" aria-labelledby="fieldTitle">
 <div class="field-forum-header"><h1 class="home-title" id="fieldTitle">Field Talk</h1><p>Hunting conversations near you.</p><button class="action" type="button" id="fieldStartThread">+ New discussion</button></div>
 <div class="field-forum-controls"><label>Community area<select id="fieldScope"><option value="state">My state</option><option value="county">My county</option></select></label><p id="fieldStatus" class="muted" role="status"></p><details id="fieldBlockedPanel" hidden><summary>Blocked hunters</summary><p class="muted">Blocked accounts are hidden from your Field Talk feed.</p><div id="fieldBlockedList"></div></details></div>

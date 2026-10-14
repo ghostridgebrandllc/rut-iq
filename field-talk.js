@@ -8,6 +8,7 @@ function fieldText(value){return safe(value==null?'':value)}
 function fieldRequest(path,opts={}){return fetch(api+'/rest/v1/'+path,{...opts,headers:{...headers(authToken),...(opts.headers||{})}})}
 async function loadFieldTalk(){
  const serial=++fieldLoadSerial,feed=$('fieldFeed'),status=$('fieldStatus');
+ $('fieldThreads').classList.remove('field-single-open');
  const state=selectedState,county=region,scope=$('fieldScope').value;
  fieldBlockedUsers=new Set();
  $('fieldPostForm').hidden=!authUser;
@@ -107,6 +108,18 @@ $('fieldFeed').addEventListener('click',async e=>{
  }catch(error){status.textContent=error.message||'Photo upload failed. Try again.'}
  finally{button.disabled=false}
 });
+$('fieldFeed').addEventListener('click',e=>{
+ const back=e.target.closest('[data-field-back]');
+ if(!back)return;
+ const thread=$('fieldFeed').querySelector('.field-thread-open');
+ if(thread){
+  thread.classList.remove('field-thread-open');
+  $('fieldThreads').classList.remove('field-single-open');
+  const button=thread.querySelector('[data-field-replies]');
+  if(button)button.textContent='Open thread →';
+  window.scrollTo({top:0,behavior:'smooth'});
+ }
+});
 $('fieldFeed').addEventListener('click',async e=>{
  const reply=e.target.closest('[data-field-replies]'),flag=e.target.closest('[data-field-report]'),block=e.target.closest('[data-field-block]');
  if(block){
@@ -123,8 +136,18 @@ $('fieldFeed').addEventListener('click',async e=>{
   return;
  }
  if(!reply)return;
- const container=reply.closest('article').querySelector('.field-replies');
- if(!container.hidden){container.hidden=true;return}
+ const thread=reply.closest('article');
+ const container=thread.querySelector('.field-replies');
+ thread.classList.add('field-thread-open');
+ $('fieldThreads').classList.add('field-single-open');
+ reply.textContent='Replies';
+ if(!thread.querySelector('[data-field-back]')){
+  const backButton=document.createElement('button');backButton.type='button';
+  backButton.className='field-back';backButton.dataset.fieldBack='';backButton.textContent='← All discussions';
+  thread.prepend(backButton);
+ }
+ thread.scrollIntoView({behavior:'smooth',block:'start'});
+ if(!container.hidden)return;
  container.hidden=false;container.textContent='Loading replies…';
  try{
   const url='rut_field_comments?select=id,author_id,body,created_at&post_id=eq.'+encodeURIComponent(reply.dataset.fieldReplies)+'&status=eq.approved&order=created_at.asc&limit=50';
