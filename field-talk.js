@@ -112,7 +112,12 @@ async function loadFieldModeration(){
    '<div class="card" data-mod-id="'+fieldText(item.id)+'" data-mod-kind="'+item.kind+'"'+(item.kind==='flags'?' data-target-post="'+fieldText(item.post_id||'')+'" data-target-comment="'+fieldText(item.comment_id||'')+'"':'')+'><p class="eyebrow">'+item.kind+'</p><p style="white-space:pre-wrap;overflow-wrap:anywhere">'+fieldText(item.content)+'</p>'+
    (item.kind==='photos'?'<div data-review-photo="'+fieldText(item.storage_path)+'"></div>':'')+
    (item.kind==='flags'?'<div data-flag-context>Reviewing reported content…</div><button type="button" class="danger" data-mod-status="content_hidden">Hide reported content</button> <button type="button" class="ghost" data-mod-status="dismissed">Dismiss report</button>':'<button type="button" class="ghost" data-mod-status="approved">Approve</button> <button type="button" class="danger" data-mod-status="rejected">Reject</button>')+'</div>').join(''):'<p class="muted">No pending posts, replies or photos.</p>';
-  for(const el of queue.querySelectorAll('[data-review-photo]'))await showPrivateFieldImage(el,el.dataset.reviewPhoto);
+  for(const el of queue.querySelectorAll('[data-review-photo]')){
+   const card=el.closest('[data-mod-id]'),approve=card.querySelector('[data-mod-status="approved"]');
+   if(approve)approve.disabled=true;
+   const previewOk=await showPrivateFieldImage(el,el.dataset.reviewPhoto);
+   if(approve&&previewOk)approve.disabled=false;
+  }
   for(const card of queue.querySelectorAll('[data-target-post]')){
    const postId=card.dataset.targetPost,commentId=card.dataset.targetComment;
    const target=postId?'rut_field_posts':'rut_field_comments',id=postId||commentId;
@@ -196,12 +201,14 @@ async function showPrivateFieldImage(container,path){
   const blob=await response.blob();
   if(!blob.type.startsWith('image/'))throw Error('Invalid photo');
   const url=URL.createObjectURL(blob),img=document.createElement('img');
-  img.src=url;img.alt='Photo attached to Field Talk thread';
+  img.alt='Photo attached to Field Talk thread';
   img.style.cssText='display:block;max-width:100%;max-height:420px;object-fit:contain;border-radius:10px;margin:10px 0';
-  img.onload=()=>URL.revokeObjectURL(url);
-  img.onerror=()=>URL.revokeObjectURL(url);
-  container.append(img);
- }catch{container.textContent='Photo preview unavailable.'}
+  return await new Promise(resolve=>{
+   img.onload=()=>{URL.revokeObjectURL(url);resolve(true)};
+   img.onerror=()=>{URL.revokeObjectURL(url);container.textContent='Photo preview unavailable.';resolve(false)};
+   container.append(img);img.src=url;
+  });
+ }catch{container.textContent='Photo preview unavailable.';return false}
 }
 async function loadFieldImages(container,target){
  if(!authToken)return;
