@@ -129,14 +129,14 @@ async function loadFieldModeration(){
   const [posts,comments,photos,flags]=await Promise.all([
    fieldRequest('rut_field_posts?select=id,caption,created_at&status=eq.pending&order=created_at.asc&limit=50'),
    fieldRequest('rut_field_comments?select=id,body,created_at&status=eq.pending&order=created_at.asc&limit=50'),
-   fieldRequest('rut_field_photos?select=id,storage_path,created_at&status=eq.pending&order=created_at.asc&limit=50'),
+   fieldRequest('rut_field_photos?select=id,storage_path,created_at,scan_status&status=eq.pending&order=created_at.asc&limit=50'),
    fieldRequest('rut_field_flags?select=id,reason,post_id,comment_id,created_at&resolved_at=is.null&order=created_at.asc&limit=50')
   ]);
   if(!stillAuthorized())return;
   if(!posts.ok||!comments.ok||!photos.ok||!flags.ok)throw Error();
   const a=(await posts.json()).map(p=>({...p,kind:'posts',content:p.caption}));
   const b=(await comments.json()).map(c=>({...c,kind:'comments',content:c.body}));
-  const c=(await photos.json()).map(p=>({...p,kind:'photos',content:'Photo attachment pending manual review'}));
+  const c=(await photos.json()).map(p=>({...p,kind:'photos',content:'Automated photo scan: '+(p.scan_status||'pending')+' · Manual review required'}));
   const d=(await flags.json()).map(f=>({...f,kind:'flags',content:'Reported '+(f.post_id?'post':'reply')+' · Reason: '+f.reason}));
   summary.textContent=[a.length+' posts',b.length+' replies',c.length+' photos',d.length+' reports'].join(' · ')+(d.length?' · Review reported content first':'');
   if(!stillAuthorized())return;
@@ -150,7 +150,7 @@ async function loadFieldModeration(){
    if(approve)approve.disabled=true;
    const previewOk=await showPrivateFieldImage(el,el.dataset.reviewPhoto);
    if(!stillAuthorized()){section.hidden=true;return}
-   if(approve&&previewOk)approve.disabled=false;
+   if(approve&&previewOk&&card.textContent.includes('Automated photo scan: clean'))approve.disabled=false;
   }
   for(const card of queue.querySelectorAll('[data-target-post]')){
    const postId=card.dataset.targetPost,commentId=card.dataset.targetComment;
@@ -216,13 +216,18 @@ async function uploadFieldPhotos(files,target){
   const blob=await sanitizeFieldPhoto(file);
   const path=authUser.id+'/'+targetId+'/'+fieldUUID()+'.jpg';
   // Reserve a moderated attachment first. Storage RLS rejects unregistered paths.
-  const result=await fieldRequest('rut_field_photos',{method:'POST',headers:{Prefer:'return=minimal'},body:JSON.stringify({uploader_id:authUser.id,storage_path:path,status:'pending',...target})});
+  const result=await fieldRequest('rut_field_photos',{method:'POST',headers:{Prefer:'return=representation'},body:JSON.stringify({uploader_id:authUser.id,storage_path:path,status:'pending',...target})});
   if(!result.ok)throw Error('Photo attachment could not be created.');
+  const reserved=(await result.json().catch(()=>[]))[0];
   try{
    const upload=await fetch(api+'/storage/v1/object/rut-field-photos/'+path,{
     method:'POST',headers:{apikey:pubKey,Authorization:'Bearer '+authToken,'Content-Type':'image/jpeg','x-upsert':'false'},body:blob
    });
    if(!upload.ok)throw Error('Photo upload failed.');
+   // The scan is server-side; a missing provider keeps the photo private and pending.
+   if(reserved?.id){
+    try{await fetch(api+'/functions/v1/rut-field-photo-scan',{method:'POST',headers:headers(authToken),body:JSON.stringify({photo_id:reserved.id})});}catch{}
+   }
   }catch(error){
    await fieldRequest('rut_field_photos?storage_path=eq.'+encodeURIComponent(path),{method:'DELETE'}).catch(()=>{});
    throw error;
