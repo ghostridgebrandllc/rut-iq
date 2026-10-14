@@ -24,7 +24,7 @@ function setSelectors(){
  $('county').innerHTML=opts;$('reportCounty').innerHTML=opts;$('county').disabled=!selectedState;$('reportCounty').disabled=!selectedState;updateRegionSummary();
 }
 const regionsReady=fetch('./regions.json').then(r=>{if(!r.ok)throw Error('Regions unavailable');return r.json()}).then(data=>{regions=data;if(!regions[selectedState])selectedState='';setSelectors();$('regionPicker').open=!hasRegion();render();loadReports();loadDailyReport();return data}).catch(e=>{ $('county').innerHTML='<option>Unable to load counties</option>'; $('reportCounty').innerHTML='<option>Unable to load counties</option>'; $('reportForm').querySelector('button[type=submit]').disabled=true; $('regionLabel').textContent='Refresh to load counties';return null; });
-const routes=new Set(['welcome','home','heatmap','reports','submit','signup','plans','about','help','privacy','terms','account']);
+const routes=new Set(['welcome','home','heatmap','reports','fieldtalk','submit','signup','plans','about','help','privacy','terms','account']);
 function defaultRoute(){return authUser||localStorage.getItem('rut_iq_welcomed')==='1'?'home':'welcome'}
 function enterAccount(mode){
  setAuthMode(mode==='create'?'create':'signin');
@@ -49,7 +49,7 @@ function show(id,record=true){
  if(id!=='heatmap'){$('mapAddressInput').blur();document.body.classList.remove('map-searching','map-keyboard')}
  syncMapViewport();
  document.title=({home:'Daily Report',heatmap:'Rut Map',signup:'Hunter Sign-in',privacy:'Privacy',terms:'Terms of Use',help:'Help'}[id]||'Rut IQ')+' | Rut IQ by Ghost Ridge';
- if(id==='home')loadDailyReport();if(id==='plans')updateMembershipUI();if(id==='heatmap')setTimeout(()=>loadHeatmap(),50);
+ if(id==='fieldtalk'&&typeof loadFieldTalk==='function')loadFieldTalk();if(id==='home')loadDailyReport();if(id==='plans')updateMembershipUI();if(id==='heatmap')setTimeout(()=>loadHeatmap(),50);
  render();window.scrollTo(0,0);
 }
 function routeFromURL(){
