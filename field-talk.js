@@ -35,9 +35,14 @@ $('fieldPostForm').addEventListener('submit',async e=>{
  if(!caption||caption.length>2000)return;
  button.disabled=true;message.textContent='Submitting for moderation…';
  try{
-  const res=await fieldRequest('rut_field_posts',{method:'POST',headers:{Prefer:'return=minimal'},body:JSON.stringify({author_id:authUser.id,state:selectedState,county:region||null,category:$('fieldCategory').value,caption,status:'pending'})});
+  const res=await fieldRequest('rut_field_posts',{method:'POST',headers:{Prefer:'return=representation'},body:JSON.stringify({author_id:authUser.id,state:selectedState,county:region||null,category:$('fieldCategory').value,caption,status:'pending'})});
   if(!res.ok)throw Error('Could not submit your post.');
-  $('fieldCaption').value='';message.textContent='Submitted. Your post will appear after moderator approval.';loadFieldTalk();
+  const newPost=await res.json().catch(()=>[]);
+  const postId=newPost[0]?.id;
+  const files=[...$('fieldPostPhotos').files];
+  if(files.length&&postId){await uploadFieldPhotos(files,{post_id:postId});}
+  $('fieldCaption').value='';$('fieldPostPhotos').value='';
+  message.textContent='Submitted for moderator review.';loadFieldTalk();
  }catch(e){message.textContent='Unable to submit right now. Please try again.'}
  finally{button.disabled=false}
 });
@@ -59,7 +64,7 @@ $('fieldFeed').addEventListener('click',async e=>{
   const url='rut_field_comments?select=id,body,created_at&post_id=eq.'+encodeURIComponent(reply.dataset.fieldReplies)+'&status=eq.approved&order=created_at.asc&limit=50';
   const res=await fieldRequest(url);if(!res.ok)throw Error();
   const comments=await res.json();
-  container.innerHTML=comments.map(c=>'<p class="card" style="white-space:pre-wrap;overflow-wrap:anywhere">'+fieldText(c.body)+'</p>').join('')+'<form class="field-comment-form"><label>Reply<textarea required maxlength="1000" rows="2"></textarea></label><button class="ghost" type="submit">Submit reply for review</button><p class="muted" role="status"></p></form>';
+  container.innerHTML=comments.map(c=>'<p class="card" style="white-space:pre-wrap;overflow-wrap:anywhere">'+fieldText(c.body)+'</p>').join('')+'<form class="field-comment-form"><label>Reply<textarea required maxlength="1000" rows="2"></textarea></label><label>Photos (up to 3)<input type="file" accept="image/jpeg,image/png,image/webp" multiple></label><button class="ghost" type="submit">Submit reply for review</button><p class="muted" role="status"></p></form>';
  }catch{container.textContent='Unable to load replies.'}
 });
 $('fieldFeed').addEventListener('submit',async e=>{
@@ -67,7 +72,7 @@ $('fieldFeed').addEventListener('submit',async e=>{
  const post=form.closest('article').dataset.fieldPost,body=form.querySelector('textarea').value.trim();
  if(!body||!authUser)return;
  const button=form.querySelector('button');button.disabled=true;
- try{const r=await fieldRequest('rut_field_comments',{method:'POST',headers:{Prefer:'return=minimal'},body:JSON.stringify({post_id:post,author_id:authUser.id,body,status:'pending'})});form.querySelector('[role=status]').textContent=r.ok?'Reply submitted for review.':'Unable to submit reply.';if(r.ok)form.querySelector('textarea').value=''}
+ try{const r=await fieldRequest('rut_field_comments',{method:'POST',headers:{Prefer:'return=representation'},body:JSON.stringify({post_id:post,author_id:authUser.id,body,status:'pending'})});form.querySelector('[role=status]').textContent=r.ok?'Reply submitted for review.':'Unable to submit reply.';if(r.ok){const saved=await r.json();const files=[...form.querySelector('input[type=file]').files];if(files.length&&saved[0]?.id)await uploadFieldPhotos(files,{comment_id:saved[0].id});form.querySelector('textarea').value='';form.querySelector('input[type=file]').value=''}}
  catch{form.querySelector('[role=status]').textContent='Unable to submit reply.'}
  finally{button.disabled=false}
 });
@@ -102,3 +107,38 @@ $('fieldReviewQueue').addEventListener('click',async e=>{
   await loadFieldModeration();loadFieldTalk();
  }catch{button.disabled=false;alert('Moderation action failed. Please retry.')}
 });
+
+// Re-encode with canvas to remove EXIF/GPS metadata before upload.
+// Private storage never exposes a public image URL.
+function sanitizeFieldPhoto(file){
+ return new Promise((resolve,reject)=>{
+  if(!['image/jpeg','image/png','image/webp'].includes(file.type)||file.size>12*1024*1024){reject(Error('Use a JPEG, PNG or WebP under 12 MB.'));return}
+  const img=new Image(),url=URL.createObjectURL(file);
+  img.onload=()=>{
+   URL.revokeObjectURL(url);
+   const ratio=Math.min(1,1600/Math.max(img.naturalWidth,img.naturalHeight));
+   if(!img.naturalWidth||!img.naturalHeight||img.naturalWidth*img.naturalHeight>50000000){reject(Error('Photo dimensions unsupported.'));return}
+   const canvas=document.createElement('canvas');canvas.width=Math.round(img.naturalWidth*ratio);canvas.height=Math.round(img.naturalHeight*ratio);
+   const ctx=canvas.getContext('2d');ctx.fillStyle='#fff';ctx.fillRect(0,0,canvas.width,canvas.height);ctx.drawImage(img,0,0,canvas.width,canvas.height);
+   canvas.toBlob(blob=>blob&&blob.size<=5242880?resolve(blob):reject(Error('Unable to prepare photo.')),'image/jpeg',.82);
+  };
+  img.onerror=()=>{URL.revokeObjectURL(url);reject(Error('Photo could not be opened.'))};
+  img.src=url;
+ });
+}
+function fieldUUID(){return crypto.randomUUID()}
+async function uploadFieldPhotos(files,target){
+ if(files.length>3)throw Error('Maximum 3 photos per post or reply.');
+ if(!authUser||!authToken)throw Error('Sign in to upload.');
+ const targetId=target.post_id||target.comment_id;
+ for(const file of files){
+  const blob=await sanitizeFieldPhoto(file);
+  const path=authUser.id+'/'+targetId+'/'+fieldUUID()+'.jpg';
+  const upload=await fetch(api+'/storage/v1/object/rut-field-photos/'+path,{
+   method:'POST',headers:{apikey:pubKey,Authorization:'Bearer '+authToken,'Content-Type':'image/jpeg','x-upsert':'false'},body:blob
+  });
+  if(!upload.ok)throw Error('Photo upload failed.');
+  const result=await fieldRequest('rut_field_photos',{method:'POST',headers:{Prefer:'return=minimal'},body:JSON.stringify({uploader_id:authUser.id,storage_path:path,status:'pending',...target})});
+  if(!result.ok)throw Error('Photo attachment failed; contact support before retrying.');
+ }
+}
