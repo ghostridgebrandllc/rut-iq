@@ -1,11 +1,13 @@
 /* Field Talk beta: moderated public threads and private pending photo attachments. */
 'use strict';
 let fieldLoadSerial=0;
+let fieldBlockedUsers=new Set();
 function fieldText(value){return safe(value==null?'':value)}
 function fieldRequest(path,opts={}){return fetch(api+'/rest/v1/'+path,{...opts,headers:{...headers(authToken),...(opts.headers||{})}})}
 async function loadFieldTalk(){
  const serial=++fieldLoadSerial,feed=$('fieldFeed'),status=$('fieldStatus');
  const state=selectedState,county=region,scope=$('fieldScope').value;
+ fieldBlockedUsers=new Set();
  $('fieldPostForm').hidden=!authUser;
  if(authUser)loadFieldModeration();
  if(!authUser){status.textContent='Sign in to view and contribute to Field Talk.';feed.innerHTML='<button class="action" data-route="signup">Sign in / Join</button>';return}
@@ -21,9 +23,11 @@ async function loadFieldTalk(){
   url.searchParams.set('limit','40');
   const response=await fieldRequest(url.pathname.replace('/rest/v1/','')+url.search);
   if(!response.ok)throw Error('Unable to load discussions');
-  const rows=await response.json();
+  let rows=await response.json();
   if(serial!==fieldLoadSerial)return;
-  feed.innerHTML=rows.length?rows.map(p=>'<article class="card" data-field-post="'+fieldText(p.id)+'"><div class="eyebrow">'+fieldText(p.category)+' · '+fieldText(p.county||p.state)+'</div><p style="white-space:pre-wrap;overflow-wrap:anywhere">'+fieldText(p.caption)+'</p><p class="muted">'+(p.status==='approved'?'Community post':'Pending moderator approval')+' · '+fieldText(new Date(p.created_at).toLocaleDateString())+'</p>'+(p.status==='approved'?'<button type="button" class="ghost" data-field-replies="'+fieldText(p.id)+'">View replies</button> <button type="button" class="text-button" data-field-report="'+fieldText(p.id)+'">Report</button><div class="field-replies" hidden></div>':'')+'</article>').join(''):'<div class="card"><p>No discussions here yet. Start the conversation.</p></div>';
+  const blocks=await fieldRequest('rut_field_blocks?select=blocked_id');
+  if(blocks.ok){fieldBlockedUsers=new Set((await blocks.json()).map(b=>b.blocked_id));rows=rows.filter(p=>!fieldBlockedUsers.has(p.author_id));}
+  feed.innerHTML=rows.length?rows.map(p=>'<article class="card" data-field-post="'+fieldText(p.id)+'"><div class="eyebrow">'+fieldText(p.category)+' · '+fieldText(p.county||p.state)+'</div><p style="white-space:pre-wrap;overflow-wrap:anywhere">'+fieldText(p.caption)+'</p><p class="muted">'+(p.status==='approved'?'Community post':'Pending moderator approval')+' · '+fieldText(new Date(p.created_at).toLocaleDateString())+'</p>'+(p.status==='approved'?'<button type="button" class="ghost" data-field-replies="'+fieldText(p.id)+'">View replies</button> <button type="button" class="text-button" data-field-report="'+fieldText(p.id)+'">Report</button> <button type="button" class="text-button" data-field-block="'+fieldText(p.author_id)+'">Block hunter</button><div class="field-replies" hidden></div>':'')+'</article>').join(''):'<div class="card"><p>No discussions here yet. Start the conversation.</p></div>';
   for(const p of rows){const el=feed.querySelector('[data-field-post="'+p.id+'"]');if(el)loadFieldImages(el,{post_id:p.id});}
  }catch(e){if(serial===fieldLoadSerial)feed.innerHTML='<p class="muted">Could not load Field Talk. Please retry later.</p>'}
 }
@@ -48,7 +52,12 @@ $('fieldPostForm').addEventListener('submit',async e=>{
  finally{button.disabled=false}
 });
 $('fieldFeed').addEventListener('click',async e=>{
- const reply=e.target.closest('[data-field-replies]'),flag=e.target.closest('[data-field-report]');
+ const reply=e.target.closest('[data-field-replies]'),flag=e.target.closest('[data-field-report]'),block=e.target.closest('[data-field-block]');
+ if(block){
+  if(!confirm('Hide this hunter’s discussions from your Field Talk feed?'))return;
+  const res=await fieldRequest('rut_field_blocks',{method:'POST',headers:{Prefer:'return=minimal'},body:JSON.stringify({blocker_id:authUser.id,blocked_id:block.dataset.fieldBlock})});
+  if(res.ok)loadFieldTalk();else alert('Unable to block hunter.');return;
+ }
  if(flag){
   const reason=prompt('Report reason: spam, harassment, graphic, privacy, illegal, or other');
   if(!reason)return;
@@ -62,9 +71,9 @@ $('fieldFeed').addEventListener('click',async e=>{
  if(!container.hidden){container.hidden=true;return}
  container.hidden=false;container.textContent='Loading replies…';
  try{
-  const url='rut_field_comments?select=id,body,created_at&post_id=eq.'+encodeURIComponent(reply.dataset.fieldReplies)+'&status=eq.approved&order=created_at.asc&limit=50';
+  const url='rut_field_comments?select=id,author_id,body,created_at&post_id=eq.'+encodeURIComponent(reply.dataset.fieldReplies)+'&status=eq.approved&order=created_at.asc&limit=50';
   const res=await fieldRequest(url);if(!res.ok)throw Error();
-  const comments=await res.json();
+  const comments=(await res.json()).filter(c=>!fieldBlockedUsers.has(c.author_id));
   container.innerHTML=comments.map(c=>'<div class="card" data-field-comment="'+fieldText(c.id)+'"><p style="white-space:pre-wrap;overflow-wrap:anywhere">'+fieldText(c.body)+'</p></div>').join('')+'<form class="field-comment-form"><label>Reply<textarea required maxlength="1000" rows="2"></textarea></label><label>Photos (up to 3)<input type="file" accept="image/jpeg,image/png,image/webp" multiple></label><button class="ghost" type="submit">Submit reply for review</button><p class="muted" role="status"></p></form>';
   for(const c of comments){const el=container.querySelector('[data-field-comment="'+c.id+'"]');if(el)loadFieldImages(el,{comment_id:c.id});}
  }catch{container.textContent='Unable to load replies.'}
@@ -87,20 +96,22 @@ async function loadFieldModeration(){
   const role=await fetch(api+'/rest/v1/rpc/rut_field_is_moderator',{method:'POST',headers:headers(authToken),body:'{}'});
   if(!role.ok||(await role.json())!==true)return;
   section.hidden=false;queue.textContent='Loading moderation queue…';
-  const [posts,comments,photos]=await Promise.all([
+  const [posts,comments,photos,flags]=await Promise.all([
    fieldRequest('rut_field_posts?select=id,caption,created_at&status=eq.pending&order=created_at.asc&limit=50'),
    fieldRequest('rut_field_comments?select=id,body,created_at&status=eq.pending&order=created_at.asc&limit=50'),
-   fieldRequest('rut_field_photos?select=id,storage_path,created_at&status=eq.pending&order=created_at.asc&limit=50')
+   fieldRequest('rut_field_photos?select=id,storage_path,created_at&status=eq.pending&order=created_at.asc&limit=50'),
+   fieldRequest('rut_field_flags?select=id,reason,post_id,comment_id,created_at&resolved_at=is.null&order=created_at.asc&limit=50')
   ]);
-  if(!posts.ok||!comments.ok||!photos.ok)throw Error();
+  if(!posts.ok||!comments.ok||!photos.ok||!flags.ok)throw Error();
   const a=(await posts.json()).map(p=>({...p,kind:'posts',content:p.caption}));
   const b=(await comments.json()).map(c=>({...c,kind:'comments',content:c.body}));
   const c=(await photos.json()).map(p=>({...p,kind:'photos',content:'Photo attachment pending manual review'}));
-  const pending=[...a,...b,...c];
+  const d=(await flags.json()).map(f=>({...f,kind:'flags',content:'Reported content: '+f.reason+' · '+(f.post_id?'post':'reply')}));
+  const pending=[...a,...b,...c,...d];
   queue.innerHTML=pending.length?pending.map(item=>
    '<div class="card" data-mod-id="'+fieldText(item.id)+'" data-mod-kind="'+item.kind+'"><p class="eyebrow">'+item.kind+'</p><p style="white-space:pre-wrap;overflow-wrap:anywhere">'+fieldText(item.content)+'</p>'+
    (item.kind==='photos'?'<div data-review-photo="'+fieldText(item.storage_path)+'"></div>':'')+
-   '<button type="button" class="ghost" data-mod-status="approved">Approve</button> <button type="button" class="danger" data-mod-status="rejected">Reject</button></div>').join(''):'<p class="muted">No pending posts, replies or photos.</p>';
+   (item.kind==='flags'?'<button type="button" class="ghost" data-mod-status="reviewed">Mark reviewed</button>':'<button type="button" class="ghost" data-mod-status="approved">Approve</button> <button type="button" class="danger" data-mod-status="rejected">Reject</button>')+'</div>').join(''):'<p class="muted">No pending posts, replies or photos.</p>';
   for(const el of queue.querySelectorAll('[data-review-photo]'))await showPrivateFieldImage(el,el.dataset.reviewPhoto);
  }catch{if(!section.hidden)queue.textContent='Unable to load review queue.'}
 }
@@ -108,10 +119,13 @@ $('fieldReviewRefresh').addEventListener('click',loadFieldModeration);
 $('fieldReviewQueue').addEventListener('click',async e=>{
  const button=e.target.closest('[data-mod-status]');if(!button)return;
  const card=button.closest('[data-mod-id]'),kind=card.dataset.modKind,id=card.dataset.modId,status=button.dataset.modStatus;
- if(!['posts','comments','photos'].includes(kind)||!['approved','rejected'].includes(status))return;
+ if(!['posts','comments','photos','flags'].includes(kind)||!['approved','rejected','reviewed'].includes(status))return;
+ if(kind==='flags'&&status!=='reviewed')return;
+ if(kind!=='flags'&&status==='reviewed')return;
  button.disabled=true;
  try{
-  const response=await fieldRequest('rut_field_'+kind+'?id=eq.'+encodeURIComponent(id),{method:'PATCH',headers:{Prefer:'return=minimal'},body:JSON.stringify({status,reviewed_at:new Date().toISOString()})});
+  const patch=kind==='flags'?{resolution:'reviewed',resolved_at:new Date().toISOString()}:{status,reviewed_at:new Date().toISOString()};
+  const response=await fieldRequest('rut_field_'+kind+'?id=eq.'+encodeURIComponent(id),{method:'PATCH',headers:{Prefer:'return=minimal'},body:JSON.stringify(patch)});
   if(!response.ok)throw Error();
   await loadFieldModeration();loadFieldTalk();
  }catch{button.disabled=false;alert('Moderation action failed. Please retry.')}
