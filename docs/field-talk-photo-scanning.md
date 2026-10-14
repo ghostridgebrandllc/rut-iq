@@ -20,6 +20,8 @@ post/reply. Flagged, error and unscanned photos cannot be approved.
 The scan cannot establish that a photo is free of precise-location clues
 in its visible contents; human privacy review remains necessary.
 
+Scanner v2: moderators can retry pending/error scans from the review queue; the server checks their authenticated moderator role. Passing a retry only unlocks manual review, never publishes content.
+
 Before release: configure and verify the provider credential and costs,
 test with real authorized accounts and both safe and unsafe images,
 test error/timeout behavior, and add a trusted retry workflow for scan errors.

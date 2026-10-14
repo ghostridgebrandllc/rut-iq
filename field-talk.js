@@ -143,7 +143,7 @@ async function loadFieldModeration(){
   const pending=[...d,...a,...b,...c];
   queue.innerHTML=pending.length?pending.map(item=>
    '<div class="card" data-mod-id="'+fieldText(item.id)+'" data-mod-kind="'+item.kind+'"'+(item.kind==='flags'?' data-target-post="'+fieldText(item.post_id||'')+'" data-target-comment="'+fieldText(item.comment_id||'')+'"':'')+'><p class="eyebrow">'+item.kind+'</p><p style="white-space:pre-wrap;overflow-wrap:anywhere">'+fieldText(item.content)+'</p>'+
-   (item.kind==='photos'?'<div data-review-photo="'+fieldText(item.storage_path)+'"></div>':'')+
+   (item.kind==='photos'?'<div data-review-photo="'+fieldText(item.storage_path)+'"></div>'+((item.scan_status==='error'||item.scan_status==='pending')?'<button type="button" class="ghost" data-retry-photo-scan>Retry safety scan</button>':''):'')+
    (item.kind==='flags'?'<div data-flag-context>Reviewing reported content…</div><button type="button" class="danger" data-mod-status="content_hidden">Hide reported content</button> <button type="button" class="ghost" data-mod-status="dismissed">Dismiss report</button>':'<button type="button" class="ghost" data-mod-status="approved">Approve</button> <button type="button" class="danger" data-mod-status="rejected">Reject</button>')+'</div>').join(''):'<p class="muted">No pending posts, replies or photos.</p>';
   for(const el of queue.querySelectorAll('[data-review-photo]')){
    const card=el.closest('[data-mod-id]'),approve=card.querySelector('[data-mod-status="approved"]');
@@ -167,6 +167,17 @@ async function loadFieldModeration(){
   }
  }catch{if(stillAuthorized()&&!section.hidden){queue.textContent='Unable to load review queue.';summary.textContent='Could not check pending reviews. Try refreshing.'}}
 }
+$('fieldReviewQueue').addEventListener('click',async e=>{
+ const button=e.target.closest('[data-retry-photo-scan]');if(!button||!authUser||!authToken)return;
+ const card=button.closest('[data-mod-id]');if(!card||card.dataset.modKind!=='photos')return;
+ button.disabled=true;button.textContent='Scanning…';
+ try{
+  const res=await fetch(api+'/functions/v1/rut-field-photo-scan',{method:'POST',headers:headers(authToken),body:JSON.stringify({photo_id:card.dataset.modId})});
+  const data=await res.json().catch(()=>({}));
+  if(!res.ok||!['clean','flagged'].includes(data.scan_status))throw Error('Scanner unavailable. Photo stays pending.');
+  await loadFieldModeration();
+ }catch{button.disabled=false;button.textContent='Retry safety scan';alert('Scan could not complete. The photo remains private.');}
+});
 $('fieldReviewRefresh').addEventListener('click',loadFieldModeration);
 $('fieldReviewQueue').addEventListener('click',async e=>{
  const button=e.target.closest('[data-mod-status]');if(!button)return;
