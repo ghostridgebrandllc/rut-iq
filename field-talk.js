@@ -33,7 +33,7 @@ async function loadFieldTalk(){
    $('fieldBlockedList').innerHTML=fieldBlockedUsers.size?[...fieldBlockedUsers].map(id=>
     '<div class="row" style="margin:10px 0"><span class="muted">Blocked hunter</span><button class="ghost" type="button" data-field-unblock="'+fieldText(id)+'">Unblock</button></div>').join(''):'<p class="muted">No blocked hunters.</p>';
   }
-  feed.innerHTML=rows.length?rows.map(p=>'<article class="card" data-field-post="'+fieldText(p.id)+'"><div class="eyebrow">'+fieldText(p.category)+' · '+fieldText(p.county||p.state)+'</div><p style="white-space:pre-wrap;overflow-wrap:anywhere">'+fieldText(p.caption)+'</p><p class="muted">'+(p.status==='approved'?'Community post':'Pending moderator approval')+' · '+fieldText(new Date(p.created_at).toLocaleDateString())+'</p>'+(p.status==='approved'?'<button type="button" class="ghost" data-field-replies="'+fieldText(p.id)+'">View replies</button> <button type="button" class="text-button" data-field-report="'+fieldText(p.id)+'">Report</button> <button type="button" class="text-button" data-field-block="'+fieldText(p.author_id)+'">Block hunter</button><div class="field-replies" hidden></div>':'')+'</article>').join(''):'<div class="card"><p>No discussions here yet. Start the conversation.</p></div>';
+  feed.innerHTML=rows.length?rows.map(p=>'<article class="card" data-field-post="'+fieldText(p.id)+'"><div class="eyebrow">'+fieldText(p.category)+' · '+fieldText(p.county||p.state)+'</div><p style="white-space:pre-wrap;overflow-wrap:anywhere">'+fieldText(p.caption)+'</p><p class="muted">'+(p.status==='approved'?'Community post':'Pending moderator approval')+' · '+fieldText(new Date(p.created_at).toLocaleDateString())+'</p>'+(p.status==='pending'&&p.author_id===authUser.id?'<div class="field-pending-photo"><label>Add photos to this pending post<input type="file" accept="image/jpeg,image/png,image/webp" multiple></label><button type="button" class="ghost" data-field-add-photos="'+fieldText(p.id)+'">Attach photos</button><p class="muted" role="status">Up to 3 photos total. Photos need scanning and moderator approval.</p></div>':'')+(p.status==='approved'?'<button type="button" class="ghost" data-field-replies="'+fieldText(p.id)+'">View replies</button> <button type="button" class="text-button" data-field-report="'+fieldText(p.id)+'">Report</button> <button type="button" class="text-button" data-field-block="'+fieldText(p.author_id)+'">Block hunter</button><div class="field-replies" hidden></div>':'')+'</article>').join(''):'<div class="card"><p>No discussions here yet. Start the conversation.</p></div>';
   for(const p of rows){const el=feed.querySelector('[data-field-post="'+p.id+'"]');if(el)loadFieldImages(el,{post_id:p.id});}
  }catch(e){if(serial===fieldLoadSerial)feed.innerHTML='<p class="muted">Could not load Field Talk. Please retry later.</p>'}
 }
@@ -64,6 +64,26 @@ $('fieldPostForm').addEventListener('submit',async e=>{
   $('fieldCaption').value='';$('fieldPostPhotos').value='';
   message.textContent=files.length?'Submitted. Photos stay private until automated screening and moderator approval.':'Submitted for moderator review.';loadFieldTalk();
  }catch(e){message.textContent='Your text post may have been saved, but one or more photos did not upload. Check your pending post before trying again.'}
+ finally{button.disabled=false}
+});
+$('fieldFeed').addEventListener('click',async e=>{
+ const button=e.target.closest('[data-field-add-photos]');if(!button||!authUser)return;
+ const container=button.closest('.field-pending-photo');
+ const input=container.querySelector('input[type=file]'),status=container.querySelector('[role=status]');
+ const files=[...input.files];
+ if(!files.length){status.textContent='Choose one or more photos first.';return}
+ if(files.length>3){status.textContent='Choose no more than 3 photos.';return}
+ button.disabled=true;status.textContent='Uploading and requesting safety scan…';
+ try{
+  const existing=await fieldRequest('rut_field_photos?select=id&post_id=eq.'+encodeURIComponent(button.dataset.fieldAddPhotos)+'&limit=3');
+  if(!existing.ok)throw Error('Could not check existing attachments.');
+  const count=(await existing.json()).length;
+  if(count+files.length>3)throw Error('This thread can have only 3 photos total.');
+  await uploadFieldPhotos(files,{post_id:button.dataset.fieldAddPhotos});
+  input.value='';
+  status.textContent='Photos uploaded. Awaiting safety scan and moderator approval.';
+  loadFieldModeration();
+ }catch(error){status.textContent=error.message||'Photo upload failed. Try again.'}
  finally{button.disabled=false}
 });
 $('fieldFeed').addEventListener('click',async e=>{
