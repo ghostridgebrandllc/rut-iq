@@ -40,7 +40,7 @@ $('welcomeExplore').addEventListener('click',()=>{localStorage.setItem('rut_iq_w
 function show(id,record=true){
  if(id==='plans')id='about';
  if(!routes.has(id))id='home';
- if(id==='submit'&&!authUser)id='signup';
+
  if(id==='account')updateAccountUI();
  if(record&&location.hash!=='#'+id)history.pushState(null,'','#'+id);
  document.querySelectorAll('.view').forEach(x=>x.classList.toggle('show',x.id===id));
@@ -242,6 +242,7 @@ function updateAuthUI(){
  updateAccountUI();
  $('signedOutAuth').hidden=!!authUser;$('signedInActions').hidden=!authUser;
  $('authStatus').textContent=authUser?'Signed in as '+authUser.email:'Sign in securely to contribute reports';
+ if(authUser&&sessionStorage.getItem('rut_iq_resume_report')==='1'&&restorePendingReport()){sessionStorage.removeItem('rut_iq_resume_report');show('submit');$('message').textContent='Signed in. Review your draft and submit your sighting.'}
  updateSignInButton();
  $('signOutButton').hidden=!authUser;$('authEmail').hidden=!!authUser;
 }
@@ -281,6 +282,7 @@ async function initAuth(){
  updateAuthUI();await refreshMembership();
  if(generation!==authGeneration)return;
  if(params.has('error'))show('signup');
+ if(authUser&&sessionStorage.getItem('rut_iq_resume_report')==='1'){sessionStorage.removeItem('rut_iq_resume_report');if(restorePendingReport()){show('submit');$('message').textContent='You are signed in. Review your report and tap Submit Hunter Report.';return}}
  if(authUser){localStorage.setItem('rut_iq_welcomed','1');if(params.get('access_token')){$('authMessage').textContent='You’re signed in. Your hunter account is ready.';show(params.get('type')==='recovery'?'account':'home');if(params.get('type')==='recovery'){$('passwordMessage').textContent='Choose your new password below.';$('newPassword').focus()}}}
 }
 $('signOutButton').addEventListener('click',async()=>{
@@ -319,9 +321,20 @@ window.addEventListener('storage',event=>{
  }
 });
 document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible'&&authUser){(async()=>{if(session?.refresh_token)await refreshSession();await refreshMembership();await loadReports();await loadDailyReport()})().catch(()=>{})}});
+function savePendingReport(){
+ sessionStorage.setItem('rut_iq_pending_report',JSON.stringify({state:selectedState,county:region,behavior:$('behavior').value,date:$('date').value,notes:$('notes').value}));
+}
+function restorePendingReport(){
+ const raw=sessionStorage.getItem('rut_iq_pending_report');if(!raw)return false;
+ try{const draft=JSON.parse(raw);if(!validCounty({state:draft.state,county:draft.county}))return false;
+ selectedState=draft.state;region=draft.county;setSelectors();
+ $('behavior').value=draft.behavior||'';$('date').value=draft.date||localDate();$('notes').value=draft.notes||'';
+ return true;
+ }catch{return false}
+}
 $('reportForm').addEventListener('submit',async e=>{
  e.preventDefault();const msg=$('message');msg.textContent='';
- if(!authUser||!authToken){msg.textContent='Please sign in before submitting.';show('signup');return}
+ if(!authUser||!authToken){savePendingReport();msg.textContent='Your report is saved as a draft. Sign in free to submit it.';sessionStorage.setItem('rut_iq_resume_report','1');show('signup');$('authMessage').textContent='Your sighting is ready. Sign in or create a free account to submit it.';return}
  const behavior=$('behavior').value,date=$('date').value,notes=$('notes').value.trim(),submittedState=selectedState,submittedCounty=region;
  if(!(regions[selectedState]||[]).some(c=>c.name===region)){msg.textContent='Choose a state and county before submitting.';return}
  if(!behavior||!date)return;
@@ -331,7 +344,7 @@ $('reportForm').addEventListener('submit',async e=>{
   if(session?.refresh_token&&Number(session.expires_at)*1000<Date.now()+60000)await refreshSession();
   const resp=await fetch(api+'/rest/v1/rut_reports',{method:'POST',headers:{...headers(authToken),'Prefer':'return=minimal'},body:JSON.stringify({user_id:authUser.id,state:submittedState,county:submittedCounty,behavior,observed_on:date,notes})});
   if(!resp.ok){const err=await resp.json().catch(()=>({}));if(resp.status===409)throw Error('You already submitted this behavior for that day and county.');throw Error(err.message||'Could not save the report')}
-  $('reportForm').reset();$('date').value=localDate();setSelectors();
+  sessionStorage.removeItem('rut_iq_pending_report');sessionStorage.removeItem('rut_iq_resume_report');$('reportForm').reset();$('date').value=localDate();setSelectors();
   await Promise.all([loadReports(),loadDailyReport()]);
   reportDataFetchedAt=0;await fetchMapReportData().then(()=>{if(map)recolorMap()}).catch(()=>{});
   showReportReceipt(submittedState,submittedCounty,behavior,date,!!authUser.app_metadata?.rut_iq_qa);
