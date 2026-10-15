@@ -144,14 +144,15 @@ async function loadReports(){
 }
 document.addEventListener('click',async e=>{
  const button=e.target.closest('[data-test-checkout]');
+ const liveBilling=location.hostname==='rut-iq-preview.onrender.com';
  if(!button)return;
  const status=$('rutCheckoutStatus'),plan=button.dataset.testCheckout;
  if(!['monthly','annual'].includes(plan))return;
  if(!authUser||!authToken){status.textContent='Sign in to Rut IQ before testing checkout.';show('signup');return}
  if(proAccess){status.textContent='Pro is already active on this account. No new subscription is needed.';return}
- button.disabled=true;status.textContent='Preparing Stripe sandbox checkout…';
+ button.disabled=true;status.textContent=liveBilling?'Checking live checkout availability…':'Preparing Stripe sandbox checkout…';
  try{
-  const res=await fetch(api+'/functions/v1/rut-iq-checkout-test',{
+  const res=await fetch(api+'/functions/v1/'+(liveBilling?'rut-iq-checkout-live':'rut-iq-checkout-test'),{
    method:'POST',headers:headers(authToken),body:JSON.stringify({plan})
   });
   const data=await res.json().catch(()=>({}));
@@ -164,9 +165,9 @@ document.addEventListener('click',async e=>{
 document.getElementById('manageRutBilling').addEventListener('click',async()=>{
  const button=$('manageRutBilling'),message=$('planMessage');
  if(!authUser||!authToken)return;
- button.disabled=true;message.textContent='Opening Stripe sandbox billing…';
+ button.disabled=true;message.textContent='Opening Stripe billing…';
  try{
-  const res=await fetch(api+'/functions/v1/rut-iq-billing-portal-test',{method:'POST',headers:headers(authToken),body:'{}'});
+  const res=await fetch(api+'/functions/v1/'+(location.hostname==='rut-iq-preview.onrender.com'?'rut-iq-billing-portal-live':'rut-iq-billing-portal-test'),{method:'POST',headers:headers(authToken),body:'{}'});
   const data=await res.json().catch(()=>({}));
   if(!res.ok||!data.url?.startsWith('https://billing.stripe.com/'))throw Error(data.error||'Billing portal unavailable');
   location.assign(data.url);
@@ -180,7 +181,7 @@ function updateMembershipUI(){
  if($('manageRutBilling'))$('manageRutBilling').hidden=!(authUser&&membership.source==='stripe');
  for(const id of ['planCurrent','morePlan']){if($(id))$(id).textContent=label}
  for(const id of ['planStatus','moreStatus']){if($(id))$(id).textContent=status}
- if($('planMessage'))$('planMessage').textContent=proAccess?'Pro access is active. Thank you for helping build Rut IQ.':authUser?'Your Free account is active. Sandbox checkout testing is available in the private beta only.':'Sign in to contribute reports. Pro checkout is not enabled yet.';
+ if($('planMessage'))$('planMessage').textContent=proAccess?'Pro access is active. Thank you for helping build Rut IQ.':authUser?(location.hostname==='rut-iq-preview.onrender.com'?'Your Free account is active. Paid checkout is awaiting final launch approval.':'Your Free account is active. Sandbox checkout testing is available in the private beta only.'):'Sign in to contribute reports. Pro checkout is not enabled yet.';
 }
 async function refreshMembership(){
  await refreshTestAccess();
