@@ -471,21 +471,32 @@ function setSearchLoading(isLoading){
  button.textContent=isLoading?'Finding...':'Search';
 }
 async function geocodeUnitedStates(query){
- const controller=new AbortController(),timeout=setTimeout(()=>controller.abort(),12000);
+ const cleaned=query.trim().replace(/\s+/g,' ');
+ const normalized=cleaned.replace(/\b(rd|st|ave|dr|ln|hwy)\b/gi,word=>({rd:'Road',st:'Street',ave:'Avenue',dr:'Drive',ln:'Lane',hwy:'Highway'})[word.toLowerCase()]);
+ const zip=cleaned.match(/\b\d{5}(?:-\d{4})?\b/)?.[0];
+ const parts=cleaned.split(',').map(part=>part.trim()).filter(Boolean);
+ const attempts=[cleaned,normalized];
+ if(parts.length===1){
+  const streetMatch=normalized.match(/^(\d+\s+.+?\b(?:Road|Street|Avenue|Drive|Lane|Highway))\s+(.+)$/i);
+  if(streetMatch)attempts.push(streetMatch[1]+', '+streetMatch[2]);
+ }
+ if(zip)attempts.push(zip+', USA');
+ const controller=new AbortController(),timeout=setTimeout(()=>controller.abort(),18000);
  try{
-  const url=new URL('https://nominatim.openstreetmap.org/search');
-  url.searchParams.set('format','jsonv2');
-  url.searchParams.set('countrycodes','us');
-  url.searchParams.set('limit','1');
-  url.searchParams.set('addressdetails','1');
-  url.searchParams.set('q',query);
-  const response=await fetch(url,{signal:controller.signal,headers:{'Accept':'application/json'}});
-  if(!response.ok)throw Error('The address search service is unavailable. Try again.');
-  const items=await response.json();
-  if(!Array.isArray(items)||!items.length)throw Error('No U.S. location found. Include the city and state, or try a ZIP code.');
-  const result=items[0],lat=Number(result.lat),lon=Number(result.lon);
-  if(!Number.isFinite(lat)||!Number.isFinite(lon))throw Error('This location could not be mapped.');
-  return {lat,lon,label:result.display_name||query,type:result.addresstype||result.type||'',bbox:result.boundingbox};
+  for(const [index,attempt] of [...new Set(attempts)].entries()){
+   const url=new URL('https://nominatim.openstreetmap.org/search');
+   url.searchParams.set('format','jsonv2');url.searchParams.set('countrycodes','us');
+   url.searchParams.set('limit','1');url.searchParams.set('addressdetails','1');url.searchParams.set('q',attempt);
+   const response=await fetch(url,{signal:controller.signal,headers:{'Accept':'application/json'}});
+   if(!response.ok)throw Error('Address lookup is temporarily unavailable. Please try again.');
+   const items=await response.json();
+   if(!Array.isArray(items)||!items.length)continue;
+   const result=items[0],lat=Number(result.lat),lon=Number(result.lon);
+   if(!Number.isFinite(lat)||!Number.isFinite(lon))continue;
+   const approximate=!!zip&&attempt===zip+', USA';
+   return {lat,lon,label:result.display_name||attempt,type:result.addresstype||result.type||'',bbox:result.boundingbox,approximate};
+  }
+  throw Error('We could not pinpoint that address with our map provider. Try the ZIP code to view the general area, or search a nearby road or town.');
  }finally{clearTimeout(timeout)}
 }
 $('mapAddressForm').addEventListener('submit',async event=>{
@@ -507,7 +518,7 @@ $('mapAddressForm').addEventListener('submit',async event=>{
   searchMarker=L.circleMarker([location.lat,location.lon],{radius:7,color:'#fff1d7',weight:2,fillColor:'#d3ad78',fillOpacity:.95}).addTo(map);
   searchMarker.bindTooltip('Your private search location',{direction:'top'});
   $('mapStateSelect').value='';
-  setSearchStatus('Showing '+location.label+'. The marker is only visible to you in this session.');
+  setSearchStatus((location.approximate?'Showing the ZIP code area, not the exact street address: ':'Showing ')+location.label+'. The marker is only visible to you in this session.');
  }catch(error){if(request===mapSearchRequest)setSearchStatus(error.name==='AbortError'?'Address search timed out. Please try again.':error.message||'Search failed. Try again.')}
  finally{if(request===mapSearchRequest)setSearchLoading(false)}
 });
