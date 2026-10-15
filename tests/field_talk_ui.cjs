@@ -10,7 +10,7 @@ const puppeteer=require(process.env.PUPPETEER_MODULE||'/Users/brentparham/.npm/_
   await page.evaluate(()=>show('fieldtalk'));
   assert.equal(await page.$eval('#fieldtalk',x=>x.classList.contains('show')),true);
   assert.equal(await page.$eval('#fieldPostForm',x=>x.hidden),true);
-  assert.ok((await page.$eval('#fieldStatus',x=>x.textContent)).includes('Sign in'));
+  assert.ok((await page.$eval('#fieldStatus',x=>x.textContent)).includes('No account needed'));
   for(const width of [320,390,430]){
    await page.setViewport({width,height:844,isMobile:true,hasTouch:true});
    assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),'Field Talk overflow '+width);

@@ -10,8 +10,8 @@ async function loadFieldTalk(){
  fieldBlockedUsers=new Set();
  $('fieldPostForm').hidden=!authUser;
  if(authUser)loadFieldModeration();
- if(!authUser){status.textContent='Sign in to view and contribute to Field Talk.';feed.innerHTML='<button class="action" data-route="signup">Sign in / Join</button>';return}
- if(!state||(scope==='county'&&!county)){status.textContent='Choose your state and county on Home first.';feed.innerHTML='<button class="ghost" data-route="home">Choose a county</button>';return}
+ if(!authUser){status.textContent='Read approved discussions free. Sign in with a free account to post or reply.'}
+ if(!state||(scope==='county'&&!county)){status.textContent='Choose a state and county on Home to browse public discussions. No account needed.';feed.innerHTML='<button class="ghost" data-route="home">Choose a county</button>';return}
  status.textContent=scope==='county'?county+', '+state:state+' statewide';
  feed.innerHTML='<p class="muted">Loading conversations…</p>';
  try{
@@ -19,14 +19,15 @@ async function loadFieldTalk(){
   url.searchParams.set('select','id,author_id,state,county,category,caption,status,created_at');
   url.searchParams.set('state','eq.'+state);
   if(scope==='county')url.searchParams.set('county','eq.'+county);
+  if(!authUser)url.searchParams.set('status','eq.approved');
   url.searchParams.set('order','created_at.desc');
   url.searchParams.set('limit','40');
   const response=await fieldRequest(url.pathname.replace('/rest/v1/','')+url.search);
   if(!response.ok)throw Error('Unable to load discussions');
   let rows=await response.json();
   if(serial!==fieldLoadSerial)return;
-  const blocks=await fieldRequest('rut_field_blocks?select=blocked_id');
-  if(blocks.ok){
+  const blocks=authUser?await fieldRequest('rut_field_blocks?select=blocked_id'):null;
+  if(blocks?.ok){
    fieldBlockedUsers=new Set((await blocks.json()).map(b=>b.blocked_id));
    rows=rows.filter(p=>!fieldBlockedUsers.has(p.author_id));
    $('fieldBlockedList').innerHTML=fieldBlockedUsers.size?[...fieldBlockedUsers].map(id=>
@@ -88,7 +89,8 @@ $('fieldFeed').addEventListener('click',async e=>{
   const url='rut_field_comments?select=id,author_id,body,created_at&post_id=eq.'+encodeURIComponent(reply.dataset.fieldReplies)+'&status=eq.approved&order=created_at.asc&limit=50';
   const res=await fieldRequest(url);if(!res.ok)throw Error();
   const comments=(await res.json()).filter(c=>!fieldBlockedUsers.has(c.author_id));
-  container.innerHTML=comments.map(c=>'<div class="card" data-field-comment="'+fieldText(c.id)+'"><p style="white-space:pre-wrap;overflow-wrap:anywhere">'+fieldText(c.body)+'</p><button type="button" class="text-button" data-field-report-comment="'+fieldText(c.id)+'">Report reply</button></div>').join('')+'<form class="field-comment-form"><label>Reply<textarea required maxlength="1000" rows="2"></textarea></label><label>Photos (up to 3)<input type="file" accept="image/jpeg,image/png,image/webp" multiple></label><button class="ghost" type="submit">Submit reply for review</button><p class="muted" role="status"></p></form>';
+  const replyForm=authUser?'<form class="field-comment-form"><label>Reply<textarea required maxlength="1000" rows="2"></textarea></label><label>Photos (up to 3)<input type="file" accept="image/jpeg,image/png,image/webp" multiple></label><button class="ghost" type="submit">Submit reply for review</button><p class="muted" role="status"></p></form>':'<p class="muted">Sign in free to reply.</p>';
+  container.innerHTML=comments.map(c=>'<div class="card" data-field-comment="'+fieldText(c.id)+'"><p style="white-space:pre-wrap;overflow-wrap:anywhere">'+fieldText(c.body)+'</p>'+(authUser?'<button type="button" class="text-button" data-field-report-comment="'+fieldText(c.id)+'">Report reply</button>':'')+'</div>').join('')+replyForm;
   for(const c of comments){const el=container.querySelector('[data-field-comment="'+c.id+'"]');if(el)loadFieldImages(el,{comment_id:c.id});}
  }catch{container.textContent='Unable to load replies.'}
 });
