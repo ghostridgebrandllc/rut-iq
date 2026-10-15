@@ -83,6 +83,23 @@ function render(){
 }
 const api='https://ddxzyzjsqrnputiibdbi.supabase.co';
 const pubKey='sb_publishable_IKgJ-FLqeJDXM0VEoARYqQ_f-9EpGl1';
+
+// Record verified Shopify landing-page arrivals. No identity or precise location is sent.
+(function recordShopifyArrival(){
+ const params=new URLSearchParams(location.search);
+ const cta=params.get('rut_cta');
+ const allowed=new Set(['hero','explore_app','field_talk','start_free','explore_pro','launch_app']);
+ if(!allowed.has(cta)||params.get('utm_source')!=='shopify'||params.get('utm_campaign')!=='rut_iq')return;
+ const key='rut_iq_shopify_arrival:'+cta;
+ try{if(sessionStorage.getItem(key))return}catch{}
+ if(!crypto.randomUUID)return;
+ const eventKey=crypto.randomUUID();
+ fetch(api+'/rest/v1/rpc/rut_iq_record_shopify_click',{
+  method:'POST',headers:{apikey:pubKey,'Content-Type':'application/json'},
+  body:JSON.stringify({p_cta:cta,p_event_key:eventKey}),keepalive:true
+ }).then(response=>{if(response.ok){try{sessionStorage.setItem(key,eventKey)}catch{}}}).catch(()=>{});
+})();
+
 function headers(access){return {'apikey':pubKey,'Content-Type':'application/json',...(access?{'Authorization':'Bearer '+access}:{})}}
 function dayRequest(access,day=localDate()){return {method:'POST',headers:headers(access),body:JSON.stringify({as_of:day})}}
 let refreshTimer=null;
