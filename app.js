@@ -46,7 +46,7 @@ function show(id,record=true){
  document.querySelectorAll('.dock button').forEach(x=>{const active=x.dataset.tab===id;x.classList.toggle('active',active);if(active)x.setAttribute('aria-current','page');else x.removeAttribute('aria-current')});
  document.body.classList.toggle('map-view',id==='heatmap');
  document.body.classList.toggle('welcome-view',id==='welcome');
- if(id!=='heatmap'){$('mapAddressInput').blur();document.body.classList.remove('map-searching','map-keyboard')}
+ if(id!=='heatmap'){document.body.classList.remove('map-searching','map-keyboard')}
  syncMapViewport();
  document.title=({home:'Daily Report',heatmap:'Rut Map',signup:'Hunter Sign-in',privacy:'Privacy',terms:'Terms of Use',help:'Help'}[id]||'Rut IQ')+' | Rut IQ by Ghost Ridge';
  if(id==='home')loadDailyReport();if(id==='plans')updateMembershipUI();if(id==='heatmap')setTimeout(()=>loadHeatmap(),50);
@@ -436,17 +436,17 @@ function countyStyle(feature){
 }
 function countyNameFromFips(fips){return nameByFips[fips]||null}
 function stateNameFromCode(code){return stateByFips[code]||'Unknown'}
-function resetNationMap(){if(!map)return;closeCountySheet(false);clearSearchLocation();$('mapFilters').open=false;map.setView([39,-97],4);$('mapStateSelect').value='';setSearchStatus('Showing the United States. Search for a city, ZIP, or address to zoom in.')}
+function resetNationMap(){if(!map)return;closeCountySheet(false);clearSearchLocation();$('mapFilters').open=false;map.setView([39,-97],4);$('mapStateSelect').value='';$('mapCountyLookupStatus').textContent='Choose a state and county to view reports.'}
 let searchMarker=null;
 let mapSearchInProgress=false,mapSearchRequest=0;
-const searchPrivacy='Search goes to a map service. Your search marker is not shared with hunters.';
-function clearSearchLocation(){++mapSearchRequest;setSearchLoading(false);if(searchMarker&&map)map.removeLayer(searchMarker);searchMarker=null;$('mapAddressInput').value='';setSearchStatus(searchPrivacy)}
+
+function clearSearchLocation(){++mapSearchRequest;if(searchMarker&&map)map.removeLayer(searchMarker);searchMarker=null;$('mapCountyLookupStatus').textContent='Choose a state and county to view reports.'}
 let viewportFrame=0;
 function syncMapViewport(){
  cancelAnimationFrame(viewportFrame);
  viewportFrame=requestAnimationFrame(()=>{
   const viewport=window.visualViewport,height=viewport?.height||window.innerHeight;
-  const keyboard=document.body.classList.contains('map-view')&&document.activeElement===$('mapAddressInput')&&window.innerHeight-height>120;
+  const keyboard=false;
   document.body.classList.toggle('map-keyboard',keyboard);
   const root=document.documentElement.style;
   root.setProperty('--map-viewport-height',height+'px');root.setProperty('--map-viewport-top',(viewport?.offsetTop||0)+'px');
@@ -459,137 +459,30 @@ window.addEventListener('resize',syncMapViewport);
 window.visualViewport?.addEventListener('resize',syncMapViewport);
 window.visualViewport?.addEventListener('scroll',syncMapViewport);
 if(window.ResizeObserver)new ResizeObserver(syncMapViewport).observe(document.querySelector('.map-toolbar'));
-$('mapAddressInput').addEventListener('focus',()=>{$('mapFilters').open=false;closeCountySheet(false);document.body.classList.add('map-searching');syncMapViewport()});
-$('mapAddressInput').addEventListener('blur',()=>{document.body.classList.remove('map-searching');syncMapViewport()});
-$('mapAddressInput').addEventListener('search',()=>{if(!$('mapAddressInput').value)clearSearchLocation()});
-$('clearMapSearch').addEventListener('click',()=>{clearSearchLocation();$('mapAddressInput').focus()});
-function setSearchStatus(message){$('mapAddressStatus').textContent=message}
-function setSearchLoading(isLoading){
- mapSearchInProgress=isLoading;
- const button=$('mapAddressSearchButton');
- button.disabled=isLoading;
- button.textContent=isLoading?'Finding...':'Search';
-}
-function searchLocationMatches(query,item){
- const input=query.toLowerCase(),address=item.address||{};
- const zip=input.match(/\b\d{5}(?:-\d{4})?\b/)?.[0]?.slice(0,5);
- const actualZip=String(address.postcode||'').slice(0,5);
- // ZIP searches must match the geocoder's postal code, not a street number.
- if(zip&&actualZip!==zip)return false;
- const wantsAlabama=/\b(alabama|al)\b/i.test(query);
- if(wantsAlabama&&!/alabama/i.test(String(address.state||'')))return false;
- return Number.isFinite(Number(item.lat))&&Number.isFinite(Number(item.lon));
-}
-async function censusAddressMatch(query,signal){
- if(!/^\s*\d+\s+/.test(query))return null;
- const response=await fetch('/api/address-geocode?q='+encodeURIComponent(query),{signal});
- if(!response.ok)return null;
- const data=await response.json();
- const expectedZip=query.match(/\b\d{5}(?:-\d{4})?\b/)?.[0]?.slice(0,5);
- const wantsAlabama=/\b(?:alabama|al)\b/i.test(query);
- const match=(data.matches||[]).find(item=>{
-  const label=String(item.label||'');
-  if(expectedZip&&!new RegExp('\\b'+expectedZip+'\\b').test(label))return false;
-  if(wantsAlabama&&!/\bAL\b/i.test(label))return false;
-  return Number.isFinite(Number(item.lat))&&Number.isFinite(Number(item.lon));
- });
- return match?{lat:Number(match.lat),lon:Number(match.lon),label:match.label,type:'road',approximate:true}:null;
-}
-async function geocodeUnitedStates(query){
- const cleaned=query.trim().replace(/\s+/g,' ');
- const normalized=cleaned.replace(/\b(rd|st|ave|dr|ln|hwy)\b/gi,word=>({rd:'Road',st:'Street',ave:'Avenue',dr:'Drive',ln:'Lane',hwy:'Highway'})[word.toLowerCase()]);
- const zip=cleaned.match(/\b\d{5}(?:-\d{4})?\b/)?.[0];
- const parts=cleaned.split(',').map(part=>part.trim()).filter(Boolean);
- const attempts=[cleaned,normalized];
- if(parts.length===1){
-  const streetMatch=normalized.match(/^(\d+\s+.+?\b(?:Road|Street|Avenue|Drive|Lane|Highway))\s+(.+)$/i);
-  if(streetMatch)attempts.push(streetMatch[1]+', '+streetMatch[2]);
- }
- if(zip)attempts.push(zip+', USA');
- const controller=new AbortController(),timeout=setTimeout(()=>controller.abort(),18000);
- try{
-  try{const census=await censusAddressMatch(cleaned,controller.signal);if(census)return census}catch(error){if(error.name==='AbortError')throw error}
-  for(const [index,attempt] of [...new Set(attempts)].entries()){
-   const url=new URL('https://nominatim.openstreetmap.org/search');
-   url.searchParams.set('format','jsonv2');url.searchParams.set('countrycodes','us');
-   url.searchParams.set('limit','1');url.searchParams.set('addressdetails','1');url.searchParams.set('q',attempt);
-   let items;
-   try{const response=await fetch(url,{signal:controller.signal,headers:{'Accept':'application/json'}});if(!response.ok)continue;items=await response.json()}
-   catch(error){if(error.name==='AbortError')throw error;continue}
-   if(!Array.isArray(items)||!items.length)continue;
-   const result=items.find(item=>searchLocationMatches(cleaned,item));if(!result)continue;const lat=Number(result.lat),lon=Number(result.lon);
-   if(!Number.isFinite(lat)||!Number.isFinite(lon))continue;
-   const approximate=!!zip&&attempt===zip+', USA';
-   return {lat,lon,label:result.display_name||attempt,type:result.addresstype||result.type||'',bbox:result.boundingbox,approximate};
-  }
-  throw Error('No verified location match. The map will not move to a different ZIP code or state. Try searching the city or ZIP code separately.');
- }finally{clearTimeout(timeout)}
-}
-let addressSuggestTimer=null,addressSuggestController=null,addressSuggestionResults=[];
-const suggestionBox=$('mapAddressSuggestions');
-function hideAddressSuggestions(){suggestionBox.hidden=true;suggestionBox.replaceChildren();addressSuggestionResults=[]}
-$('mapAddressInput').addEventListener('input',()=>{
- clearTimeout(addressSuggestTimer);addressSuggestController?.abort();hideAddressSuggestions();
- const query=$('mapAddressInput').value.trim();if(query.length<3)return;
- addressSuggestTimer=setTimeout(async()=>{
-  const controller=new AbortController();addressSuggestController=controller;
-  try{
-   const url=new URL('https://nominatim.openstreetmap.org/search');
-   url.searchParams.set('format','jsonv2');url.searchParams.set('countrycodes','us');url.searchParams.set('addressdetails','1');url.searchParams.set('limit','5');url.searchParams.set('q',query);
-   const response=await fetch(url,{signal:controller.signal,headers:{Accept:'application/json'}});
-   if(!response.ok)return;
-   const results=await response.json();
-   if(controller.signal.aborted||query!==$('mapAddressInput').value.trim()||!Array.isArray(results))return;
-   addressSuggestionResults=results.filter(item=>searchLocationMatches(query,item));
-   suggestionBox.replaceChildren();
-   for(const [index,item] of addressSuggestionResults.entries()){
-    const button=document.createElement('button');button.type='button';button.setAttribute('role','option');button.dataset.suggestionIndex=String(index);
-    button.textContent=item.display_name;button.style.cssText='display:block;width:100%;padding:11px;text-align:left;background:transparent;color:#f5e3cc;border:0;border-bottom:1px solid #5b4837;font-size:13px;line-height:1.4';
-    suggestionBox.append(button);
-   }
-   suggestionBox.hidden=!addressSuggestionResults.length;
-  }catch(error){if(error.name!=='AbortError')hideAddressSuggestions()}
- },450);
-});
-suggestionBox.addEventListener('click',event=>{
- const button=event.target.closest('[data-suggestion-index]');if(!button)return;
- const item=addressSuggestionResults[Number(button.dataset.suggestionIndex)];if(!item)return;
- clearTimeout(addressSuggestTimer);addressSuggestController?.abort();hideAddressSuggestions();
- $('mapAddressInput').value=item.display_name;
- const lat=Number(item.lat),lon=Number(item.lon),type=item.addresstype||item.type||'';
- if(searchMarker){map.removeLayer(searchMarker);searchMarker=null}
- map.setView([lat,lon],['house','building','road','street'].includes(type)?14:11,{animate:true});
- searchMarker=L.circleMarker([lat,lon],{radius:7,color:'#fff1d7',weight:2,fillColor:'#d3ad78',fillOpacity:.95}).addTo(map);
- searchMarker.bindTooltip('Your private search location',{direction:'top'});
- $('mapStateSelect').value='';setSearchStatus('Showing '+item.display_name+'. Your search marker is private to this session.');
- $('mapAddressInput').blur();
-});
-$('mapAddressForm').addEventListener('submit',async event=>{
- event.preventDefault();
- if(mapSearchInProgress)return;
- const query=$('mapAddressInput').value.trim();
- if(query.length<3){setSearchStatus('Enter at least three characters to search.');return}
- if(!map){setSearchStatus('Open the map first and try again.');return}
- clearTimeout(addressSuggestTimer);addressSuggestController?.abort();hideAddressSuggestions();$('mapAddressInput').blur();closeCountySheet(false);$('mapFilters').open=false;
- const request=++mapSearchRequest;setSearchLoading(true);setSearchStatus('Finding location...');
- try{
-  const location=await geocodeUnitedStates(query);
-  if(request!==mapSearchRequest)return;
-  if(searchMarker){map.removeLayer(searchMarker);searchMarker=null}
-  const isStreet=['house','building','amenity','residential','road','street'].includes(location.type);
-  const isZip=['postcode','postal_code'].includes(location.type);
-  const zoom=isStreet?14:isZip?11:10;
-  map.setView([location.lat,location.lon],zoom,{animate:true});
-  searchMarker=L.circleMarker([location.lat,location.lon],{radius:7,color:'#fff1d7',weight:2,fillColor:'#d3ad78',fillOpacity:.95}).addTo(map);
-  searchMarker.bindTooltip('Your private search location',{direction:'top'});
-  $('mapStateSelect').value='';
-  setSearchStatus((location.approximate?'Showing an estimated address location (not an exact property pin): ':'Showing ')+location.label+'. The marker is only visible to you in this session.');
- }catch(error){if(request===mapSearchRequest)setSearchStatus(error.name==='AbortError'?'Address search timed out. Please try again.':error instanceof TypeError?'Address service connection failed. Please retry.':error.message||'Search failed. Try again.')}
- finally{if(request===mapSearchRequest)setSearchLoading(false)}
-});
 
+
+
+$('clearMapSearch').addEventListener('click',()=>{clearSearchLocation();$('mapCountyState').value='';$('mapCountyState').dispatchEvent(new Event('change'))});
+function setupCountyLookup(){
+ const state=$('mapCountyState'),county=$('mapCountyChoice'),go=$('mapCountyGo');
+ state.innerHTML='<option value="">Choose state</option>'+Object.keys(regions).sort().map(st=>'<option value="'+safe(st)+'">'+safe(st)+'</option>').join('');
+ state.addEventListener('change',()=>{
+  const list=regions[state.value]||[];
+  county.innerHTML='<option value="">Choose county</option>'+list.map(c=>'<option value="'+safe(c.name)+'">'+safe(c.name)+'</option>').join('');
+  county.disabled=!list.length;go.disabled=true;
+ });
+ county.addEventListener('change',()=>{go.disabled=!county.value});
+ go.addEventListener('click',async()=>{
+  if(!state.value||!county.value)return;
+  go.disabled=true;$('mapCountyLookupStatus').textContent='Finding '+county.value+', '+state.value+'...';
+  try{await focusCountyMap({state:state.value,county:county.value});$('mapCountyLookupStatus').textContent='Showing '+county.value+', '+state.value+'. Tap the county for report details.'}
+  catch{$('mapCountyLookupStatus').textContent='County map unavailable. Try again.'}
+  finally{go.disabled=!county.value}
+ });
+}
+regionsReady.then(data=>{if(data)setupCountyLookup()});
 let activeMapCounty=null,countyFocusReturn=null;
-function openCountySheet(state,county){countyFocusReturn=document.activeElement;$('mapAddressInput').blur();activeMapCounty={state,county};$('mapFilters').open=false;renderCountySheet();$('countySheet').hidden=false;$('heatmap').classList.add('has-county');$('sheetContent').scrollTop=0;$('closeCountySheet').focus({preventScroll:true})}
+function openCountySheet(state,county){countyFocusReturn=document.activeElement;activeMapCounty={state,county};$('mapFilters').open=false;renderCountySheet();$('countySheet').hidden=false;$('heatmap').classList.add('has-county');$('sheetContent').scrollTop=0;$('closeCountySheet').focus({preventScroll:true})}
 function renderCountySheet(){
  if(!activeMapCounty)return;
  const {state,county}=activeMapCounty,data=allMapCounts[state+'|'+county],count=mapReportCount(data);
@@ -684,7 +577,7 @@ $('deleteAccountForm').addEventListener('submit',async event=>{
   for(const key of ['rut_iq_saved_counties','rut_iq_home_county','rut_iq_visits'])localStorage.removeItem(key);savedCounties=[];preferredCounty=null;visitStarts.clear();++changeRequest;++comparisonRequest;
   localStorage.removeItem('rut_iq_state');localStorage.removeItem('rut_iq_county');selectedState='';region='';setSelectors();$('regionPicker').open=true;
   if(searchMarker){map.removeLayer(searchMarker);searchMarker=null}
-  $('mapAddressInput').value='';$('mapAddressStatus').textContent='Search a town or ZIP to find a hunting area.';
+  $('mapCountyState').value='';$('mapCountyState').dispatchEvent(new Event('change'));$('mapCountyLookupStatus').textContent='Choose a state and county to view reports.';
   mapColorMode='volume';mapDays=7;$('mapColorMode').value='volume';$('mapTimeWindow').value='7';
   if(map)recolorMap();updateAuthUI();updateMembershipUI();render();loadDailyReport();
   message.textContent='Your Rut IQ account and reports have been deleted. You’re signed out. Your Woods IQ and store accounts were not changed.';
