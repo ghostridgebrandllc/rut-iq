@@ -25,11 +25,11 @@ const headers = token => ({apikey:key,'Content-Type':'application/json',...(toke
     }
    }
    await page.evaluate(()=>show('heatmap'));console.log('MAP READY');await page.select('#mapColorMode','signal');
-   assert.equal(await page.$eval('#plans',e=>e.classList.contains('show')),true);
+   assert.equal(await page.$eval('#about',e=>e.classList.contains('show')),true);
    await page.evaluate(()=>show('heatmap'));await page.select('#mapTimeWindow','30');
-   assert.equal(await page.$eval('#plans',e=>e.classList.contains('show')),true);
+   assert.equal(await page.$eval('#about',e=>e.classList.contains('show')),true);
    assert.equal(await page.$$eval('[data-live-checkout]',buttons=>buttons.length),2);
-   assert.ok((await page.$eval('#plans',e=>e.innerText)).includes('$49.99/year'));
+   assert.ok((await page.$eval('#moreMembershipComparison',e=>e.innerText)).includes('$49.99/year'));
    await page.setViewport({width:390,height:844,isMobile:true,hasTouch:true});
    for(const view of ['home','heatmap','plans']){await page.evaluate(v=>show(v),view);await page.screenshot({path:`/tmp/rut-iq-${view}.png`,fullPage:true})}
    // Checkout is gated by server configuration; guests must be prompted to sign in.
