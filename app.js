@@ -38,6 +38,7 @@ $('welcomeSignIn').addEventListener('click',()=>enterAccount('signin'));
 $('mapJoin').addEventListener('click',()=>enterAccount('create'));
 $('welcomeExplore').addEventListener('click',()=>{localStorage.setItem('rut_iq_welcomed','1');show('heatmap')});
 function show(id,record=true){
+ if(id==='plans')id='about';
  if(!routes.has(id))id='home';
  if(id==='submit'&&!authUser)id='signup';
  if(id==='account')updateAccountUI();
@@ -49,7 +50,7 @@ function show(id,record=true){
  if(id!=='heatmap'){document.body.classList.remove('map-searching','map-keyboard')}
  syncMapViewport();
  document.title=({home:'Daily Report',heatmap:'Rut Map',signup:'Hunter Sign-in',privacy:'Privacy',terms:'Terms of Use',help:'Help'}[id]||'Rut IQ')+' | Rut IQ by Ghost Ridge';
- if(id==='home')loadDailyReport();if(id==='plans')updateMembershipUI();if(id==='heatmap')setTimeout(()=>loadHeatmap(),50);
+ if(id==='home')loadDailyReport();if(id==='about')updateMembershipUI();if(id==='heatmap')setTimeout(()=>loadHeatmap(),50);
  render();window.scrollTo(0,0);
 }
 function routeFromURL(){
@@ -175,7 +176,7 @@ function updateMembershipUI(){
  if($('manageRutBilling'))$('manageRutBilling').hidden=!(authUser&&membership.source==='stripe');
  for(const id of ['planCurrent','morePlan']){if($(id))$(id).textContent=label}
  for(const id of ['planStatus','moreStatus']){if($(id))$(id).textContent=status}
- if($('planMessage'))$('planMessage').textContent=proAccess?'Pro access is active. Thank you for helping build Rut IQ.':authUser?'Your Free account is active. Pro checkout is not enabled yet; no payments can be taken.':'Sign in to contribute reports. Pro checkout is not enabled yet.';
+ if($('planMessage'))$('planMessage').textContent=proAccess?'Pro access is active. Thank you for helping build Rut IQ.':authUser?'Your Free account is active. Choose a Pro plan above to subscribe.':'Sign in to contribute reports or choose Pro.';
 }
 async function refreshMembership(){
  await refreshTestAccess();
