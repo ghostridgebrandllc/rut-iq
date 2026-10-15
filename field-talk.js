@@ -4,11 +4,35 @@ let fieldLoadSerial=0;
 let fieldBlockedUsers=new Set();
 function fieldText(value){return safe(value==null?'':value)}
 function fieldRequest(path,opts={}){return fetch(api+'/rest/v1/'+path,{...opts,headers:{...headers(authToken),...(opts.headers||{})}})}
+let hunterHandles=new Map();
+async function fetchHunterHandles(ids){
+ const unique=[...new Set(ids.filter(Boolean))];hunterHandles=new Map();
+ if(!unique.length)return;
+ try{const response=await fieldRequest('rut_field_handles?select=user_id,handle&user_id=in.('+unique.join(',')+')');
+ if(response.ok)for(const entry of await response.json())hunterHandles.set(entry.user_id,entry.handle)}catch{}
+}
+function displayHunter(id){return hunterHandles.has(id)?'@'+fieldText(hunterHandles.get(id)):'Hunter'}
+async function showOwnHandle(){
+ $('fieldHandleCard').hidden=!authUser;if(!authUser)return;
+ try{const response=await fieldRequest('rut_field_handles?select=handle&user_id=eq.'+encodeURIComponent(authUser.id));
+ if(response.ok){const rows=await response.json();$('fieldHandleInput').value=rows[0]?.handle||''}
+ else $('fieldHandleMessage').textContent='Handle setup is not available yet.'}catch{$('fieldHandleMessage').textContent='Handle lookup unavailable.'}
+}
+$('fieldHandleForm').addEventListener('submit',async event=>{
+ event.preventDefault();if(!authUser)return;
+ const value=$('fieldHandleInput').value.trim(),message=$('fieldHandleMessage');
+ if(!/^[A-Za-z][A-Za-z0-9_]{2,19}$/.test(value)){message.textContent='Use 3–20 letters, numbers or underscores, starting with a letter.';return}
+ const button=event.currentTarget.querySelector('button');button.disabled=true;message.textContent='Saving…';
+ try{const response=await fieldRequest('rut_field_handles?on_conflict=user_id',{method:'POST',headers:{Prefer:'resolution=merge-duplicates,return=minimal'},body:JSON.stringify({user_id:authUser.id,handle:value})});
+ if(!response.ok){message.textContent=response.status===409?'Handle taken. Try another.':'Handle unavailable. Please try again.';return}
+ message.textContent='Saved as @'+value;loadFieldTalk()}
+ catch{message.textContent='Unable to save your handle.'}finally{button.disabled=false}
+});
 async function loadFieldTalk(){
  const serial=++fieldLoadSerial,feed=$('fieldFeed'),status=$('fieldStatus');
  const state=selectedState,county=region,scope=$('fieldScope').value;
  fieldBlockedUsers=new Set();
- $('fieldPostForm').hidden=!authUser;
+ $('fieldPostForm').hidden=!authUser;showOwnHandle();
  if(authUser)loadFieldModeration();
  if(!authUser){status.textContent='Read approved discussions free. Sign in with a free account to post or reply.'}
  if(!state||(scope==='county'&&!county)){status.textContent='Choose a state and county on Home to browse public discussions. No account needed.';feed.innerHTML='<button class="ghost" data-route="home">Choose a county</button>';return}
@@ -26,6 +50,8 @@ async function loadFieldTalk(){
   if(!response.ok)throw Error('Unable to load discussions');
   let rows=await response.json();
   if(serial!==fieldLoadSerial)return;
+  await fetchHunterHandles(rows.map(p=>p.author_id));
+  if(serial!==fieldLoadSerial)return;
   const blocks=authUser?await fieldRequest('rut_field_blocks?select=blocked_id'):null;
   if(blocks?.ok){
    fieldBlockedUsers=new Set((await blocks.json()).map(b=>b.blocked_id));
@@ -33,7 +59,7 @@ async function loadFieldTalk(){
    $('fieldBlockedList').innerHTML=fieldBlockedUsers.size?[...fieldBlockedUsers].map(id=>
     '<div class="row" style="margin:10px 0"><span class="muted">Blocked hunter</span><button class="ghost" type="button" data-field-unblock="'+fieldText(id)+'">Unblock</button></div>').join(''):'<p class="muted">No blocked hunters.</p>';
   }
-  feed.innerHTML=rows.length?rows.map(p=>'<article class="card" data-field-post="'+fieldText(p.id)+'"><div class="eyebrow">'+fieldText(p.category)+' · '+fieldText(p.county||p.state)+'</div><p style="white-space:pre-wrap;overflow-wrap:anywhere">'+fieldText(p.caption)+'</p><p class="muted">'+(p.status==='approved'?'Community post':'Pending moderator approval')+' · '+fieldText(new Date(p.created_at).toLocaleDateString())+'</p>'+(p.status==='approved'?'<button type="button" class="ghost" data-field-replies="'+fieldText(p.id)+'">View replies</button> <button type="button" class="text-button" data-field-report="'+fieldText(p.id)+'">Report</button> <button type="button" class="text-button" data-field-block="'+fieldText(p.author_id)+'">Block hunter</button><div class="field-replies" hidden></div>':'')+'</article>').join(''):'<div class="card"><p>No discussions here yet. Start the conversation.</p></div>';
+  feed.innerHTML=rows.length?rows.map(p=>'<article class="card" data-field-post="'+fieldText(p.id)+'"><div class="eyebrow">'+displayHunter(p.author_id)+' · '+fieldText(p.category)+' · '+fieldText(p.county||p.state)+'</div><p style="white-space:pre-wrap;overflow-wrap:anywhere">'+fieldText(p.caption)+'</p><p class="muted">'+(p.status==='approved'?'Community post':'Pending moderator approval')+' · '+fieldText(new Date(p.created_at).toLocaleDateString())+'</p>'+(p.status==='approved'?'<button type="button" class="ghost" data-field-replies="'+fieldText(p.id)+'">View replies</button> <button type="button" class="text-button" data-field-report="'+fieldText(p.id)+'">Report</button> <button type="button" class="text-button" data-field-block="'+fieldText(p.author_id)+'">Block hunter</button><div class="field-replies" hidden></div>':'')+'</article>').join(''):'<div class="card"><p>No discussions here yet. Start the conversation.</p></div>';
   for(const p of rows){const el=feed.querySelector('[data-field-post="'+p.id+'"]');if(el)loadFieldImages(el,{post_id:p.id});}
  }catch(e){if(serial===fieldLoadSerial)feed.innerHTML='<p class="muted">Could not load Field Talk. Please retry later.</p>'}
 }
@@ -89,8 +115,9 @@ $('fieldFeed').addEventListener('click',async e=>{
   const url='rut_field_comments?select=id,author_id,body,created_at&post_id=eq.'+encodeURIComponent(reply.dataset.fieldReplies)+'&status=eq.approved&order=created_at.asc&limit=50';
   const res=await fieldRequest(url);if(!res.ok)throw Error();
   const comments=(await res.json()).filter(c=>!fieldBlockedUsers.has(c.author_id));
+  await fetchHunterHandles([...hunterHandles.keys(),...comments.map(c=>c.author_id)]);
   const replyForm=authUser?'<form class="field-comment-form"><label>Reply<textarea required maxlength="1000" rows="2"></textarea></label><label>Photos (up to 3)<input type="file" accept="image/jpeg,image/png,image/webp" multiple></label><button class="ghost" type="submit">Submit reply for review</button><p class="muted" role="status"></p></form>':'<p class="muted">Sign in free to reply.</p>';
-  container.innerHTML=comments.map(c=>'<div class="card" data-field-comment="'+fieldText(c.id)+'"><p style="white-space:pre-wrap;overflow-wrap:anywhere">'+fieldText(c.body)+'</p>'+(authUser?'<button type="button" class="text-button" data-field-report-comment="'+fieldText(c.id)+'">Report reply</button>':'')+'</div>').join('')+replyForm;
+  container.innerHTML=comments.map(c=>'<div class="card" data-field-comment="'+fieldText(c.id)+'"><p style="white-space:pre-wrap;overflow-wrap:anywhere">'+fieldText(c.body)+'</p><p class="muted">'+displayHunter(c.author_id)+'</p>'+(authUser?'<button type="button" class="text-button" data-field-report-comment="'+fieldText(c.id)+'">Report reply</button>':'')+'</div>').join('')+replyForm;
   for(const c of comments){const el=container.querySelector('[data-field-comment="'+c.id+'"]');if(el)loadFieldImages(el,{comment_id:c.id});}
  }catch{container.textContent='Unable to load replies.'}
 });
