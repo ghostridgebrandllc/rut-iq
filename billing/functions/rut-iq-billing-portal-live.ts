@@ -7,7 +7,7 @@ Deno.serve(async req=>{
  if(req.method!=="POST")return reply(405,{error:"POST only"});
  if(req.headers.get("Origin")!==origin)return reply(403,{error:"Invalid origin"});
  const secret=Deno.env.get("STRIPE_RUT_IQ_LIVE_SECRET");
- if(!secret?.startsWith("sk_live_"))return reply(503,{error:"Live billing unavailable"});
+ if(!secret?.match(/^(sk_live_|rk_live_)/))return reply(503,{error:"Live billing unavailable"});
  const token=(req.headers.get("Authorization")||"").replace(/^Bearer\s+/i,"");
  const url=Deno.env.get("SUPABASE_URL"),key=Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
  if(!token||!url||!key)return reply(401,{error:"Sign in required"});
