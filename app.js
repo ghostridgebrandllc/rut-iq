@@ -470,6 +470,16 @@ function setSearchLoading(isLoading){
  button.disabled=isLoading;
  button.textContent=isLoading?'Finding...':'Search';
 }
+function searchLocationMatches(query,item){
+ const input=query.toLowerCase(),address=item.address||{};
+ const zip=input.match(/\b\d{5}(?:-\d{4})?\b/)?.[0]?.slice(0,5);
+ const actualZip=String(address.postcode||'').slice(0,5);
+ // ZIP searches must match the geocoder's postal code, not a street number.
+ if(zip&&actualZip!==zip)return false;
+ const wantsAlabama=/\b(alabama|al)\b/i.test(query);
+ if(wantsAlabama&&!/alabama/i.test(String(address.state||'')))return false;
+ return Number.isFinite(Number(item.lat))&&Number.isFinite(Number(item.lon));
+}
 async function geocodeUnitedStates(query){
  const cleaned=query.trim().replace(/\s+/g,' ');
  const normalized=cleaned.replace(/\b(rd|st|ave|dr|ln|hwy)\b/gi,word=>({rd:'Road',st:'Street',ave:'Avenue',dr:'Drive',ln:'Lane',hwy:'Highway'})[word.toLowerCase()]);
@@ -491,12 +501,12 @@ async function geocodeUnitedStates(query){
    if(!response.ok)throw Error('Address lookup is temporarily unavailable. Please try again.');
    const items=await response.json();
    if(!Array.isArray(items)||!items.length)continue;
-   const result=items[0],lat=Number(result.lat),lon=Number(result.lon);
+   const result=items.find(item=>searchLocationMatches(cleaned,item));if(!result)continue;const lat=Number(result.lat),lon=Number(result.lon);
    if(!Number.isFinite(lat)||!Number.isFinite(lon))continue;
    const approximate=!!zip&&attempt===zip+', USA';
    return {lat,lon,label:result.display_name||attempt,type:result.addresstype||result.type||'',bbox:result.boundingbox,approximate};
   }
-  throw Error('We could not pinpoint that address with our map provider. Try the ZIP code to view the general area, or search a nearby road or town.');
+  throw Error('No verified location match. The map will not move to a different ZIP code or state. Try searching the city or ZIP code separately.');
  }finally{clearTimeout(timeout)}
 }
 let addressSuggestTimer=null,addressSuggestController=null,addressSuggestionResults=[];
@@ -514,7 +524,7 @@ $('mapAddressInput').addEventListener('input',()=>{
    if(!response.ok)return;
    const results=await response.json();
    if(controller.signal.aborted||query!==$('mapAddressInput').value.trim()||!Array.isArray(results))return;
-   addressSuggestionResults=results.filter(item=>Number.isFinite(Number(item.lat))&&Number.isFinite(Number(item.lon)));
+   addressSuggestionResults=results.filter(item=>searchLocationMatches(query,item));
    suggestionBox.replaceChildren();
    for(const [index,item] of addressSuggestionResults.entries()){
     const button=document.createElement('button');button.type='button';button.setAttribute('role','option');button.dataset.suggestionIndex=String(index);
