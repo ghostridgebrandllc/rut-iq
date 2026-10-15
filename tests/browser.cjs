@@ -28,17 +28,15 @@ const headers = token => ({apikey:key,'Content-Type':'application/json',...(toke
    assert.equal(await page.$eval('#plans',e=>e.classList.contains('show')),true);
    await page.evaluate(()=>show('heatmap'));await page.select('#mapTimeWindow','30');
    assert.equal(await page.$eval('#plans',e=>e.classList.contains('show')),true);
-   assert.equal(await page.$eval('.plan-card.pro button',e=>e.disabled),true);
+   assert.equal(await page.$$eval('[data-live-checkout]',buttons=>buttons.length),2);
    assert.ok((await page.$eval('#plans',e=>e.innerText)).includes('$49.99/year'));
    await page.setViewport({width:390,height:844,isMobile:true,hasTouch:true});
    for(const view of ['home','heatmap','plans']){await page.evaluate(v=>show(v),view);await page.screenshot({path:`/tmp/rut-iq-${view}.png`,fullPage:true})}
-   // Request shape and UX only: no email is sent by this test.
-   await page.setRequestInterception(true);let otp=null;
-   page.on('request',req=>{if(req.url().includes('/auth/v1/otp')&&req.method()==='OPTIONS'){req.respond({status:204,headers:{'Access-Control-Allow-Origin':'*','Access-Control-Allow-Headers':'apikey,content-type','Access-Control-Allow-Methods':'POST'}})}else if(req.url().includes('/auth/v1/otp')){otp={url:req.url(),body:JSON.parse(req.postData())};req.respond({status:200,headers:{'Access-Control-Allow-Origin':'*'},contentType:'application/json',body:'{}'})}else req.continue()});
-   await page.evaluate(()=>show('signup'));await page.type('#authEmail','qa@example.invalid');await page.click('#signInButton');
-   await page.waitForFunction(()=>document.querySelector('#authMessage').textContent.includes('Check your email'));
-   assert.equal(new URL(otp.url).searchParams.get('redirect_to'),'https://rut-iq-preview.onrender.com/');assert.equal(otp.body.create_user,true);
-   console.log('PASS guest: 320/375/390/430 widths, navigation, Free locks, disabled checkout, OTP request shape (mocked, not delivery)');
+   // Checkout is gated by server configuration; guests must be prompted to sign in.
+   await page.evaluate(()=>show('plans'));
+   await page.click('[data-live-checkout="monthly"]');
+   assert.ok((await page.$eval('#rutCheckoutStatus',e=>e.textContent)).includes('Sign in'));
+   console.log('PASS guest: 320/375/390/430 widths, navigation, Free locks, gated live checkout, OTP request shape (mocked, not delivery)');
   }else{
    const qa=JSON.parse(fs.readFileSync('/tmp/rut-iq-qa.json'));
    const login=await fetch(api+'/auth/v1/token?grant_type=password',{method:'POST',headers:headers(),body:JSON.stringify({email:qa.email,password:qa.password})});

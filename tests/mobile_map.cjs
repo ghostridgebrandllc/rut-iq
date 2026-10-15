@@ -91,7 +91,7 @@ const base=process.env.RUT_TEST_URL||'http://127.0.0.1:8911/';
   if(!await page.$eval('#mapFilters',e=>e.open))await page.click('#mapFilters summary');
   await page.select('#mapTimeWindow','30');
   await page.waitForFunction(()=>$('plans').classList.contains('show'));
-  assert.equal(await page.$eval('.plan-card.pro button',e=>e.disabled),true);
+  assert.equal(await page.$$eval('[data-live-checkout]',buttons=>buttons.length),2);
   await page.goBack();await page.waitForFunction(()=>$('heatmap').classList.contains('show'));
   for(const route of ['home','reports','signup','plans','about','help','privacy','terms','account']){
    await page.evaluate(v=>show(v),route);
@@ -99,6 +99,6 @@ const base=process.env.RUT_TEST_URL||'http://127.0.0.1:8911/';
    assert.ok(layout.s<=layout.w,'Overflow on '+route);
   }
   assert.deepEqual(errors,[]);
-  console.log('PASS actual county tap, Home selection, layer controls, live city search, clear search, simulated keyboard and search failure, Free gates, disabled checkout, history, navigation, no JS errors');
+  console.log('PASS actual county tap, Home selection, layer controls, live city search, clear search, simulated keyboard and search failure, Free gates, gated live checkout, history, navigation, no JS errors');
  }finally{await browser.close()}
 })().catch(e=>{console.error(e.stack);process.exit(1)});
