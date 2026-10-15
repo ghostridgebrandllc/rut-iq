@@ -138,10 +138,40 @@ async function loadReports(){
   reports=(access?data:[]).map(r=>({county:r.county,state:r.state,behavior:r.behavior,date:r.observed_on,saved:Date.parse(r.created_at)}));render();
  }catch(e){if(request===reportRequest){$('activityEmpty').textContent='Community reports are temporarily unavailable. Please try again.';$('feed').textContent='Reports unavailable. Please try again.'}}
 }
+document.addEventListener('click',async e=>{
+ const button=e.target.closest('[data-live-checkout]');
+ if(!button)return;
+ const plan=button.dataset.liveCheckout,status=$('rutCheckoutStatus');
+ if(!['monthly','annual'].includes(plan))return;
+ if(!authUser||!authToken){status.textContent='Sign in to subscribe.';show('signup');return}
+ if(proAccess){status.textContent='Pro is already active.';return}
+ button.disabled=true;status.textContent='Checking secure checkout…';
+ try{
+  const response=await fetch(api+'/functions/v1/rut-iq-checkout-live',{method:'POST',headers:headers(authToken),body:JSON.stringify({plan})});
+  const data=await response.json().catch(()=>({}));
+  if(!response.ok||!data.checkout_url?.startsWith('https://checkout.stripe.com/'))throw Error(data.error||'Checkout is not available yet.');
+  location.assign(data.checkout_url);
+ }catch(error){status.textContent=error.message||'Checkout unavailable';}
+ finally{button.disabled=false}
+});
+document.addEventListener('click',async e=>{
+ if(e.target.id!=='manageRutBilling')return;
+ const button=e.target,message=$('planMessage');
+ if(!authUser||!authToken)return;
+ button.disabled=true;message.textContent='Opening billing portal…';
+ try{
+  const response=await fetch(api+'/functions/v1/rut-iq-billing-portal-live',{method:'POST',headers:headers(authToken),body:'{}'});
+  const data=await response.json().catch(()=>({}));
+  if(!response.ok||!data.url?.startsWith('https://billing.stripe.com/'))throw Error(data.error||'Billing portal unavailable');
+  location.assign(data.url);
+ }catch(error){message.textContent=error.message||'Billing portal unavailable';}
+ finally{button.disabled=false}
+});
 let membership={plan:'free',source:'free',status:'active'},proAccess=false,membershipTimer=null;
 function updateMembershipUI(){
  const label=proAccess?'Rut IQ Pro':'Rut IQ Free';
  const status=authUser?(proAccess?(membership.source==='tester'?'Pro tester':'Active Pro'):'Free member'):'Guest';
+ if($('manageRutBilling'))$('manageRutBilling').hidden=!(authUser&&membership.source==='stripe');
  for(const id of ['planCurrent','morePlan']){if($(id))$(id).textContent=label}
  for(const id of ['planStatus','moreStatus']){if($(id))$(id).textContent=status}
  if($('planMessage'))$('planMessage').textContent=proAccess?'Pro access is active. Thank you for helping build Rut IQ.':authUser?'Your Free account is active. Pro checkout is not enabled yet; no payments can be taken.':'Sign in to contribute reports. Pro checkout is not enabled yet.';
