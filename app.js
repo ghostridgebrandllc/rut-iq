@@ -480,6 +480,21 @@ function searchLocationMatches(query,item){
  if(wantsAlabama&&!/alabama/i.test(String(address.state||'')))return false;
  return Number.isFinite(Number(item.lat))&&Number.isFinite(Number(item.lon));
 }
+async function censusAddressMatch(query,signal){
+ if(!/^\s*\d+\s+/.test(query))return null;
+ const response=await fetch('/api/address-geocode?q='+encodeURIComponent(query),{signal});
+ if(!response.ok)return null;
+ const data=await response.json();
+ const expectedZip=query.match(/\b\d{5}(?:-\d{4})?\b/)?.[0]?.slice(0,5);
+ const wantsAlabama=/\b(?:alabama|al)\b/i.test(query);
+ const match=(data.matches||[]).find(item=>{
+  const label=String(item.label||'');
+  if(expectedZip&&!new RegExp('\\b'+expectedZip+'\\b').test(label))return false;
+  if(wantsAlabama&&!/\bAL\b/i.test(label))return false;
+  return Number.isFinite(Number(item.lat))&&Number.isFinite(Number(item.lon));
+ });
+ return match?{lat:Number(match.lat),lon:Number(match.lon),label:match.label,type:'road',approximate:true}:null;
+}
 async function geocodeUnitedStates(query){
  const cleaned=query.trim().replace(/\s+/g,' ');
  const normalized=cleaned.replace(/\b(rd|st|ave|dr|ln|hwy)\b/gi,word=>({rd:'Road',st:'Street',ave:'Avenue',dr:'Drive',ln:'Lane',hwy:'Highway'})[word.toLowerCase()]);
@@ -493,6 +508,7 @@ async function geocodeUnitedStates(query){
  if(zip)attempts.push(zip+', USA');
  const controller=new AbortController(),timeout=setTimeout(()=>controller.abort(),18000);
  try{
+  try{const census=await censusAddressMatch(cleaned,controller.signal);if(census)return census}catch(error){if(error.name==='AbortError')throw error}
   for(const [index,attempt] of [...new Set(attempts)].entries()){
    const url=new URL('https://nominatim.openstreetmap.org/search');
    url.searchParams.set('format','jsonv2');url.searchParams.set('countrycodes','us');
@@ -567,7 +583,7 @@ $('mapAddressForm').addEventListener('submit',async event=>{
   searchMarker=L.circleMarker([location.lat,location.lon],{radius:7,color:'#fff1d7',weight:2,fillColor:'#d3ad78',fillOpacity:.95}).addTo(map);
   searchMarker.bindTooltip('Your private search location',{direction:'top'});
   $('mapStateSelect').value='';
-  setSearchStatus((location.approximate?'Showing the ZIP code area, not the exact street address: ':'Showing ')+location.label+'. The marker is only visible to you in this session.');
+  setSearchStatus((location.approximate?'Showing an estimated address location (not an exact property pin): ':'Showing ')+location.label+'. The marker is only visible to you in this session.');
  }catch(error){if(request===mapSearchRequest)setSearchStatus(error.name==='AbortError'?'Address search timed out. Please try again.':error.message||'Search failed. Try again.')}
  finally{if(request===mapSearchRequest)setSearchLoading(false)}
 });

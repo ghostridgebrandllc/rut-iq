@@ -2,7 +2,9 @@
 from functools import partial
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import unquote, urlsplit
+from urllib.parse import unquote, urlsplit, parse_qs, urlencode
+from urllib.request import urlopen
+import json
 import os
 import re
 
@@ -20,6 +22,35 @@ class Handler(SimpleHTTPRequestHandler):
     extensions_map = {**SimpleHTTPRequestHandler.extensions_map, '.webmanifest': 'application/manifest+json'}
     server_version = 'RutIQ'
     sys_version = ''
+
+    def do_GET(self):
+        parsed = urlsplit(self.path)
+        if parsed.path == '/api/address-geocode':
+            query = parse_qs(parsed.query).get('q', [''])[0].strip()
+            if len(query) < 6 or len(query) > 180:
+                return self.send_json(400, {'error': 'Enter a complete street address.'})
+            try:
+                url = 'https://geocoding.geo.census.gov/geocoder/geographies/onelineaddress?' + urlencode({
+                    'address': query, 'benchmark': 'Public_AR_Current',
+                    'vintage': 'Current_Current', 'format': 'json'})
+                with urlopen(url, timeout=9) as response:
+                    matches = json.load(response).get('result', {}).get('addressMatches', [])
+                result = []
+                for match in matches[:5]:
+                    coords = match.get('coordinates', {})
+                    result.append({'label': match.get('matchedAddress', ''), 'lat': coords.get('y'), 'lon': coords.get('x'), 'approximate': True})
+                return self.send_json(200, {'matches': result})
+            except Exception:
+                return self.send_json(503, {'error': 'Address lookup temporarily unavailable.'})
+        return super().do_GET()
+
+    def send_json(self, status, data):
+        body = json.dumps(data).encode('utf-8')
+        self.send_response(status)
+        self.send_header('Content-Type', 'application/json; charset=utf-8')
+        self.send_header('Content-Length', str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
 
     def send_head(self):
         path = unquote(urlsplit(self.path).path)
