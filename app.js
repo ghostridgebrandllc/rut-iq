@@ -499,13 +499,52 @@ async function geocodeUnitedStates(query){
   throw Error('We could not pinpoint that address with our map provider. Try the ZIP code to view the general area, or search a nearby road or town.');
  }finally{clearTimeout(timeout)}
 }
+let addressSuggestTimer=null,addressSuggestController=null,addressSuggestionResults=[];
+const suggestionBox=$('mapAddressSuggestions');
+function hideAddressSuggestions(){suggestionBox.hidden=true;suggestionBox.replaceChildren();addressSuggestionResults=[]}
+$('mapAddressInput').addEventListener('input',()=>{
+ clearTimeout(addressSuggestTimer);addressSuggestController?.abort();hideAddressSuggestions();
+ const query=$('mapAddressInput').value.trim();if(query.length<3)return;
+ addressSuggestTimer=setTimeout(async()=>{
+  const controller=new AbortController();addressSuggestController=controller;
+  try{
+   const url=new URL('https://nominatim.openstreetmap.org/search');
+   url.searchParams.set('format','jsonv2');url.searchParams.set('countrycodes','us');url.searchParams.set('addressdetails','1');url.searchParams.set('limit','5');url.searchParams.set('q',query);
+   const response=await fetch(url,{signal:controller.signal,headers:{Accept:'application/json'}});
+   if(!response.ok)return;
+   const results=await response.json();
+   if(controller.signal.aborted||query!==$('mapAddressInput').value.trim()||!Array.isArray(results))return;
+   addressSuggestionResults=results.filter(item=>Number.isFinite(Number(item.lat))&&Number.isFinite(Number(item.lon)));
+   suggestionBox.replaceChildren();
+   for(const [index,item] of addressSuggestionResults.entries()){
+    const button=document.createElement('button');button.type='button';button.setAttribute('role','option');button.dataset.suggestionIndex=String(index);
+    button.textContent=item.display_name;button.style.cssText='display:block;width:100%;padding:11px;text-align:left;background:transparent;color:#f5e3cc;border:0;border-bottom:1px solid #5b4837;font-size:13px;line-height:1.4';
+    suggestionBox.append(button);
+   }
+   suggestionBox.hidden=!addressSuggestionResults.length;
+  }catch(error){if(error.name!=='AbortError')hideAddressSuggestions()}
+ },450);
+});
+suggestionBox.addEventListener('click',event=>{
+ const button=event.target.closest('[data-suggestion-index]');if(!button)return;
+ const item=addressSuggestionResults[Number(button.dataset.suggestionIndex)];if(!item)return;
+ clearTimeout(addressSuggestTimer);addressSuggestController?.abort();hideAddressSuggestions();
+ $('mapAddressInput').value=item.display_name;
+ const lat=Number(item.lat),lon=Number(item.lon),type=item.addresstype||item.type||'';
+ if(searchMarker){map.removeLayer(searchMarker);searchMarker=null}
+ map.setView([lat,lon],['house','building','road','street'].includes(type)?14:11,{animate:true});
+ searchMarker=L.circleMarker([lat,lon],{radius:7,color:'#fff1d7',weight:2,fillColor:'#d3ad78',fillOpacity:.95}).addTo(map);
+ searchMarker.bindTooltip('Your private search location',{direction:'top'});
+ $('mapStateSelect').value='';setSearchStatus('Showing '+item.display_name+'. Your search marker is private to this session.');
+ $('mapAddressInput').blur();
+});
 $('mapAddressForm').addEventListener('submit',async event=>{
  event.preventDefault();
  if(mapSearchInProgress)return;
  const query=$('mapAddressInput').value.trim();
  if(query.length<3){setSearchStatus('Enter at least three characters to search.');return}
  if(!map){setSearchStatus('Open the map first and try again.');return}
- $('mapAddressInput').blur();closeCountySheet(false);$('mapFilters').open=false;
+ clearTimeout(addressSuggestTimer);addressSuggestController?.abort();hideAddressSuggestions();$('mapAddressInput').blur();closeCountySheet(false);$('mapFilters').open=false;
  const request=++mapSearchRequest;setSearchLoading(true);setSearchStatus('Finding location...');
  try{
   const location=await geocodeUnitedStates(query);
