@@ -43,6 +43,7 @@ function show(id,record=true){
 
  if(id==='account')updateAccountUI();
  if(record&&location.hash!=='#'+id)history.pushState(null,'','#'+id);
+ if(record && typeof window.woodsIQTrackPage==='function')window.woodsIQTrackPage();
  document.querySelectorAll('.view').forEach(x=>x.classList.toggle('show',x.id===id));
  document.querySelectorAll('.dock button').forEach(x=>{const active=x.dataset.tab===id;x.classList.toggle('active',active);if(active)x.setAttribute('aria-current','page');else x.removeAttribute('aria-current')});
  document.body.classList.toggle('map-view',id==='heatmap');
