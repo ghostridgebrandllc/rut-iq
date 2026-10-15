@@ -513,9 +513,9 @@ async function geocodeUnitedStates(query){
    const url=new URL('https://nominatim.openstreetmap.org/search');
    url.searchParams.set('format','jsonv2');url.searchParams.set('countrycodes','us');
    url.searchParams.set('limit','1');url.searchParams.set('addressdetails','1');url.searchParams.set('q',attempt);
-   const response=await fetch(url,{signal:controller.signal,headers:{'Accept':'application/json'}});
-   if(!response.ok)throw Error('Address lookup is temporarily unavailable. Please try again.');
-   const items=await response.json();
+   let items;
+   try{const response=await fetch(url,{signal:controller.signal,headers:{'Accept':'application/json'}});if(!response.ok)continue;items=await response.json()}
+   catch(error){if(error.name==='AbortError')throw error;continue}
    if(!Array.isArray(items)||!items.length)continue;
    const result=items.find(item=>searchLocationMatches(cleaned,item));if(!result)continue;const lat=Number(result.lat),lon=Number(result.lon);
    if(!Number.isFinite(lat)||!Number.isFinite(lon))continue;
@@ -584,7 +584,7 @@ $('mapAddressForm').addEventListener('submit',async event=>{
   searchMarker.bindTooltip('Your private search location',{direction:'top'});
   $('mapStateSelect').value='';
   setSearchStatus((location.approximate?'Showing an estimated address location (not an exact property pin): ':'Showing ')+location.label+'. The marker is only visible to you in this session.');
- }catch(error){if(request===mapSearchRequest)setSearchStatus(error.name==='AbortError'?'Address search timed out. Please try again.':error.message||'Search failed. Try again.')}
+ }catch(error){if(request===mapSearchRequest)setSearchStatus(error.name==='AbortError'?'Address search timed out. Please try again.':error instanceof TypeError?'Address service connection failed. Please retry.':error.message||'Search failed. Try again.')}
  finally{if(request===mapSearchRequest)setSearchLoading(false)}
 });
 
