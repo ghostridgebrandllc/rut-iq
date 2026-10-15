@@ -161,10 +161,23 @@ document.addEventListener('click',async e=>{
  }catch(err){status.textContent=err.message||'Could not start test checkout.'}
  finally{button.disabled=false}
 });
+document.getElementById('manageRutBilling').addEventListener('click',async()=>{
+ const button=$('manageRutBilling'),message=$('planMessage');
+ if(!authUser||!authToken)return;
+ button.disabled=true;message.textContent='Opening Stripe sandbox billing…';
+ try{
+  const res=await fetch(api+'/functions/v1/rut-iq-billing-portal-test',{method:'POST',headers:headers(authToken),body:'{}'});
+  const data=await res.json().catch(()=>({}));
+  if(!res.ok||!data.url?.startsWith('https://billing.stripe.com/'))throw Error(data.error||'Billing portal unavailable');
+  location.assign(data.url);
+ }catch(e){message.textContent=e.message||'Could not open billing portal'}
+ finally{button.disabled=false}
+});
 let membership={plan:'free',source:'free',status:'active'},proAccess=false,membershipTimer=null;
 function updateMembershipUI(){
  const label=proAccess?'Rut IQ Pro':'Rut IQ Free';
  const status=authUser?(proAccess?(membership.source==='tester'?'Pro tester':'Active Pro'):'Free member'):'Guest';
+ if($('manageRutBilling'))$('manageRutBilling').hidden=!(authUser&&membership.source==='stripe');
  for(const id of ['planCurrent','morePlan']){if($(id))$(id).textContent=label}
  for(const id of ['planStatus','moreStatus']){if($(id))$(id).textContent=status}
  if($('planMessage'))$('planMessage').textContent=proAccess?'Pro access is active. Thank you for helping build Rut IQ.':authUser?'Your Free account is active. Sandbox checkout testing is available in the private beta only.':'Sign in to contribute reports. Pro checkout is not enabled yet.';
